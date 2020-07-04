@@ -1,3 +1,13 @@
+#define DRAM_BASE_ADDR 0x80000000
+/* TODO: Need to add support for multiple cores */
+#define NUM_CORES 1
+#define CCE_PC_WIDTH 8
+#define NUM_CCE_INSTR (1 << CCE_PC_WIDTH)
+
+#define CFG_DCACHE_MODE 0x00200043
+#define CFG_ICACHE_MODE 0x00200022
+#define CFG_CCE_MODE 0x00200081
+#define CFG_CCE_UCODE_BASE_ADDR 0x00208000
 
 .section .text.start
 .globl _start
@@ -39,9 +49,44 @@ _start:
     li x31, 0x2000
     csrs mstatus, x31
     
-    li x31, 0x80000000
+    /* Copy CCE uCode */
+    li t0, CFG_CCE_UCODE_BASE_ADDR
+    li t1, NUM_CCE_INSTR
+    la t2, _ucode
+    li t3, 0
+loop:
+    ld t4, 0(t2)
+    sd t4, 0(t0)
+    addi t2, t2, 8
+    addi t0, t0, 1
+    addi t3, t3, 1
+    blt t3, t1, loop
+
+    /* Write D$ mode */
+    li t0, 1
+    li t1, CFG_DCACHE_MODE
+    sd t0, 0(t1)
+
+    /* Write I$ mode */
+    li t1, CFG_ICACHE_MODE
+    sd t0, 0(t1)
+
+    /* Write CCE mode */
+    li t1, CFG_CCE_MODE 
+    sd t0, 0(t1)
+
+    /* Load program from memory */
+
+    li x31, DRAM_BASE_ADDR
     csrw dpc, x31
     csrwi dcsr, 0x3
     dret
 halt:
     j halt
+
+.section .rodata.ucode, "a", @progbits
+.globl _ucode
+/* What exactly does .align mean in RISC-V */
+.align 8, 0
+_ucode:
+.incbin "cce_ucode.mem"
