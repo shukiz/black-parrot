@@ -62,8 +62,7 @@ dirs:
 	gcc -E $(COMMON_CFLAGS) -I$(UCODE_INC_DIR) $< -o $@
 
 %.mem: %.pre
-	./$(AS) -b -i $< -o temp.mem
-	python2 py/pad.py -i temp.mem -o $@
+	./$(AS) -b -i $< -o $@
 
 %.dbg: %.pre
 	./$(AS) -d -i $< -o $@

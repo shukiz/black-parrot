@@ -6,8 +6,9 @@ RISCV_GCC = $(CROSS_COMPILE)gcc -fPIC -march=rv64im -mabi=lp64 -mcmodel=medany -
 all: clean build
 
 clean:
-	rm -f bootrom.riscv cce_ucode.bin
+	rm -f bootrom.riscv *.bin *.out
 
 build:
-	cp $(BP_ME_DIR)/src/asm/roms/$(COH_PROTO).bin cce_ucode.bin
+	$(PYTHON)  ascii2bin.py -i $(BP_ME_DIR)/src/asm/roms/$(COH_PROTO).mem -o cce_ucode.out
+	xxd -r -p cce_ucode.out > cce_ucode.bin
 	$(RISCV_GCC) bootrom.S -o bootrom.riscv -Tlink.ld -static -Wl,--no-gc-sections
