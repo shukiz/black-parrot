@@ -59,8 +59,8 @@ loop:
     sd t4, 0(t0)
     addi t2, t2, 8
     addi t0, t0, 1
-    addi t3, t3, 1
-    blt t3, t1, loop
+    addi t1, t1, -1
+    beqz t1, loop
 
     /* Write D$ mode */
     li t0, 1
@@ -75,7 +75,7 @@ loop:
     li t1, CFG_CCE_MODE 
     sd t0, 0(t1)
 
-    /* Load program from memory */
+    /* TODO: Load program from memory */
 
     li x31, DRAM_BASE_ADDR
     csrw dpc, x31
@@ -86,7 +86,6 @@ halt:
 
 .section .rodata.ucode, "a", @progbits
 .globl _ucode
-/* What exactly does .align mean in RISC-V */
 .align 8, 0
 _ucode:
-.incbin "cce_ucode.mem"
+.incbin "cce_ucode.bin"
