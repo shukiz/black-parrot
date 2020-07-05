@@ -1,3 +1,4 @@
+
 RISCV_GCC = $(CROSS_COMPILE)gcc -fPIC -march=rv64im -mabi=lp64 -mcmodel=medany -static -nostdlib -nostartfiles
 
 .DEFAULT: all
