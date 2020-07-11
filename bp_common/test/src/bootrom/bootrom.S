@@ -1,4 +1,6 @@
 #define DRAM_BASE_ADDR 0x80000000
+#define SD_CARD_BASE_ADDR 0x00500000
+
 /* TODO: Need to add support for multiple cores */
 #define NUM_CORES 1
 #define CCE_PC_WIDTH 8
@@ -52,7 +54,7 @@ _start:
     /* Copy CCE uCode */
     li t0, CFG_CCE_UCODE_BASE_ADDR
     li t1, NUM_CCE_INSTR
-    la t2, _ucode
+    la t2, SD_CARD_BASE_ADDR
     li t3, 0
 loop:
     ld t4, 0(t2)
@@ -60,7 +62,7 @@ loop:
     addi t2, t2, 8
     addi t0, t0, 1
     addi t1, t1, -1
-    beqz t1, loop
+    bnez t1, loop
 
     /* Write D$ mode */
     li t0, 1
@@ -83,9 +85,3 @@ loop:
     dret
 halt:
     j halt
-
-.section .rodata.ucode, "a", @progbits
-.globl _ucode
-.align 8, 0
-_ucode:
-.incbin "cce_ucode.bin"
