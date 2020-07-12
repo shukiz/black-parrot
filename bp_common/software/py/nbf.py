@@ -160,10 +160,10 @@ class NBF:
     self.print_nbf_allcores(3, cfg_base_addr + cfg_reg_reset, 0)
 
     # Write CCE ucode
-    for core in range(self.ncpus):
-      for i in range(len(self.ucode)):
-        full_addr = cfg_base_addr + cfg_mem_base_cce_ucode + (core << cfg_core_offset) + i
-        self.print_nbf(3, full_addr, self.ucode[i])
+    # for core in range(self.ncpus):
+    #   for i in range(len(self.ucode)):
+    #     full_addr = cfg_base_addr + cfg_mem_base_cce_ucode + (core << cfg_core_offset) + i
+    #     self.print_nbf(3, full_addr, self.ucode[i])
 
     # Write I$, D$, and CCE modes
     self.print_nbf_allcores(3, cfg_base_addr + cfg_reg_icache_mode, 1)
