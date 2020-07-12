@@ -443,14 +443,14 @@ module bp_unicore
   wire is_other_domain     = (cmd_fifo_selected_lo.header.addr[paddr_width_p-1-:io_noc_did_width_p] != 0);
   wire is_cfg_cmd          = local_cmd_li & (device_cmd_li == cfg_dev_gp);
   wire is_clint_cmd        = local_cmd_li & (device_cmd_li == clint_dev_gp);
-  wire is_io_cmd           = (local_cmd_li & (device_cmd_li inside {boot_dev_gp, host_dev_gp})) | is_other_domain;
+  wire is_io_cmd           = (local_cmd_li & (device_cmd_li inside {boot_dev_gp, host_dev_gp, sd_card_dev_gp})) | is_other_domain;
   wire is_cache_cmd        = ~local_cmd_li || (local_cmd_li & (device_cmd_li == cache_dev_gp));
   wire is_loopback_cmd     = local_cmd_li & ~is_cfg_cmd & ~is_clint_cmd & ~is_io_cmd & ~is_cache_cmd;
 
-  assign cfg_cmd_v_li      = is_cfg_cmd   & |cmd_fifo_yumi_li;
-  assign clint_cmd_v_li    = is_clint_cmd & |cmd_fifo_yumi_li;
-  assign io_cmd_v_o        = is_io_cmd    & |cmd_fifo_yumi_li;
-  assign cache_cmd_v_li    = is_cache_cmd & |cmd_fifo_yumi_li;
+  assign cfg_cmd_v_li      = is_cfg_cmd      & |cmd_fifo_yumi_li;
+  assign clint_cmd_v_li    = is_clint_cmd    & |cmd_fifo_yumi_li;
+  assign io_cmd_v_o        = is_io_cmd       & |cmd_fifo_yumi_li;
+  assign cache_cmd_v_li    = is_cache_cmd    & |cmd_fifo_yumi_li;
   assign loopback_cmd_v_li = is_loopback_cmd & |cmd_fifo_yumi_li;
 
   bp_cce_loopback

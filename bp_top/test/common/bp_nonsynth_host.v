@@ -53,6 +53,7 @@ localparam bootrom_base_addr_gp = paddr_width_p'(64'h0001_????);
 localparam getchar_base_addr_gp = paddr_width_p'(64'h0010_0000);
 localparam putchar_base_addr_gp = paddr_width_p'(64'h0010_1000);
 localparam finish_base_addr_gp  = paddr_width_p'(64'h0010_2???);
+localparam sd_card_base_addr_gp = paddr_width_p'(64'h005?_????);
 
 bp_cce_mem_msg_s io_cmd_li, io_cmd_lo;
 bp_cce_mem_msg_s io_resp_cast_o;
@@ -81,12 +82,12 @@ bsg_fifo_1r1w_small
  assign io_cmd_yumi_li = io_resp_yumi_i;
  wire [2:0] domain_id = io_cmd_lo.header.addr[paddr_width_p-1-:3];
 
-
 logic putchar_data_cmd_v;
 logic getchar_data_cmd_v;
 logic finish_data_cmd_v;
 logic bootrom_data_cmd_v;
 logic domain_data_cmd_v;
+logic sd_card_data_cmd_v;
 
 always_comb
   begin
@@ -95,6 +96,7 @@ always_comb
     finish_data_cmd_v = 1'b0;
     bootrom_data_cmd_v = 1'b0;
     domain_data_cmd_v = io_cmd_v_lo & (domain_id != '0);
+    sd_card_data_cmd_v = 1'b0;
 
     unique
     casez (io_cmd_lo.header.addr)
@@ -102,6 +104,7 @@ always_comb
       getchar_base_addr_gp: getchar_data_cmd_v = io_cmd_v_lo;
       finish_base_addr_gp : finish_data_cmd_v = io_cmd_v_lo;
       bootrom_base_addr_gp: bootrom_data_cmd_v = io_cmd_v_lo;
+      sd_card_base_addr_gp: sd_card_data_cmd_v = io_cmd_v_lo;
       default: begin end
     endcase
   end
@@ -176,8 +179,8 @@ always_ff @(negedge clk_i)
       end
   end
 
-  localparam bootrom_els_p = 64;
-  localparam lg_bootrom_els_lp = `BSG_SAFE_CLOG2(bootrom_els_p);
+  localparam bootrom_els_lp = 128;
+  localparam lg_bootrom_els_lp = `BSG_SAFE_CLOG2(bootrom_els_lp);
   logic [lg_bootrom_els_lp-1:0] bootrom_addr_li;
   logic [instr_width_p-1:0] bootrom_data_lo;
   assign bootrom_addr_li = io_cmd_lo.header.addr[2+:lg_bootrom_els_lp];
@@ -192,17 +195,36 @@ always_ff @(negedge clk_i)
      ,.data_o(bootrom_data_lo)
      );
 
-  bp_cce_mem_msg_s host_io_resp_lo, domain_io_resp_lo, bootrom_io_resp_lo;
+  localparam sd_card_els_lp = 256;
+  localparam lg_sd_card_els_lp = `BSG_SAFE_CLOG2(sd_card_els_lp);
+  logic [lg_sd_card_els_lp-1:0] sd_card_addr_li;
+  logic [dword_width_p-1:0] sd_card_data_lo;
+  assign sd_card_addr_li = io_cmd_lo.header.addr[3+:lg_sd_card_els_lp];
+  bsg_nonsynth_test_rom
+   #(.filename_p("sd_card.mem")
+     ,.data_width_p(dword_width_p)
+     ,.addr_width_p(lg_sd_card_els_lp)
+     ,.hex_not_bin_p(1)
+     )
+   sd_card
+    (.addr_i(sd_card_addr_li)
+     ,.data_o(sd_card_data_lo)
+     );
+
+  bp_cce_mem_msg_s host_io_resp_lo, domain_io_resp_lo, bootrom_io_resp_lo, sd_card_io_resp_lo;
   
   assign host_io_resp_lo = '{header: io_cmd_lo.header, data: ch};
   assign domain_io_resp_lo = '{header: io_cmd_lo.header, data: '0};
   assign bootrom_io_resp_lo = '{header: io_cmd_lo.header, data: {bootrom_data_lo, bootrom_data_lo}};
+  assign sd_card_io_resp_lo = '{header: io_cmd_lo.header, data: sd_card_data_lo};
 
   assign io_resp_cast_o = bootrom_data_cmd_v
                           ? bootrom_io_resp_lo
-                          : domain_data_cmd_v
-                            ? domain_io_resp_lo
-                            : host_io_resp_lo;
+                          : sd_card_data_cmd_v
+                            ? sd_card_io_resp_lo
+                            : domain_data_cmd_v
+                              ? domain_io_resp_lo
+                              : host_io_resp_lo;
 
 endmodule
 

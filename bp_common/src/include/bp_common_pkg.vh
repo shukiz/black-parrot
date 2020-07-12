@@ -36,11 +36,12 @@ package bp_common_pkg;
   parameter bp_page_size_in_bytes_gp = 4096;
   parameter bp_page_offset_width_gp = `BSG_SAFE_CLOG2(bp_page_size_in_bytes_gp);
 
-  localparam boot_dev_gp  = 0;
-  localparam host_dev_gp  = 1;
-  localparam cfg_dev_gp   = 2;
-  localparam clint_dev_gp = 3;
-  localparam cache_dev_gp = 4;
+  localparam boot_dev_gp    = 0;
+  localparam host_dev_gp    = 1;
+  localparam cfg_dev_gp     = 2;
+  localparam clint_dev_gp   = 3;
+  localparam cache_dev_gp   = 4;
+  localparam sd_card_dev_gp = 5;
 
                              // 0x00_0(nnnN)(D)(A_AAAA)
   localparam boot_dev_base_addr_gp     = 32'h0000_0000;
@@ -48,6 +49,7 @@ package bp_common_pkg;
   localparam cfg_dev_base_addr_gp      = 32'h0020_0000;
   localparam clint_dev_base_addr_gp    = 32'h0030_0000;
   localparam cache_dev_base_addr_gp    = 32'h0040_0000;
+  localparam sd_card_dev_base_addr_gp  = 32'h0050_0000;
   
   localparam mipi_reg_base_addr_gp     = 32'h0030_0000;
   localparam mtimecmp_reg_base_addr_gp = 32'h0030_4000;
