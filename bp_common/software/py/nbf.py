@@ -180,7 +180,7 @@ class NBF:
     self.print_nbf_allcores(3, cfg_base_addr + cfg_domain_mask, enabled_domains)
     self.print_nbf_allcores(3, cfg_base_addr + cfg_sac_mask, self.sac)
 
-    # Write PC to the DRAM base
+    # Write PC to the bootrom base
     self.print_nbf_allcores(3, cfg_base_addr + cfg_reg_npc, 0x103000)
 
     # Write checkpoint
