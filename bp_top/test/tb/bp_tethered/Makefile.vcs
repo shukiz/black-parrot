@@ -38,11 +38,14 @@ $(SIM_DIR)/prog.elf: $(BP_TEST_MEM_DIR)/$(SUITE)/$(PROG).riscv
 $(SIM_DIR)/cce_ucode.mem: $(CCE_MEM_PATH)/$(CCE_MEM)
 	@cp $^ $@
 
-SD_CARD_MEM_INPUTS = $(CCE_MEM_PATH)/$(CCE_MEM)
+SD_CARD_MEM_INPUTS = --cce=$(CCE_MEM_PATH)/$(CCE_MEM)
+ifeq ($(PRELOAD_MEM_P), 0)
+SD_CARD_MEM_INPUTS += --prog=$(SIM_DIR)/prog.mem
+endif
 GEN_SD_CARD ?= $(BP_COMMON_DIR)/software/py/genSDCardMem.py
 
 $(SIM_DIR)/sd_card.mem:
-	python $(GEN_SD_CARD) -i $(SD_CARD_MEM_INPUTS) -o $@
+	python $(GEN_SD_CARD) $(SD_CARD_MEM_INPUTS) -o $@
 
 $(SIM_DIR)/dram_ch.ini $(SIM_DIR)/dram_sys.ini:
 	@cp $(BP_COMMON_DIR)/test/cfg/$(DRAMSIM_CH_CFG) $(@D)/dram_ch.ini
