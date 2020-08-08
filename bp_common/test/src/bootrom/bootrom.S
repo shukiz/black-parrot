@@ -1,14 +1,26 @@
-#define DRAM_BASE_ADDR 0x80000000
+#define DRAM_BASE_ADDR    0x80000000
 #define SD_CARD_BASE_ADDR 0x00500000
 
-/* TODO: Need to add support for multiple cores */
-#define NUM_CORES 1
+#ifndef NUM_CORES
+  #define NUM_CORES 1
+#endif
+
+#ifndef DOMAIN_MASK
+  #define DOMAIN_MASK 1
+#endif
+
+#ifndef SAC_MASK
+  #define SAC_MASK 0
+#endif
+
 #define CCE_PC_WIDTH 8
 #define NUM_CCE_INSTR (1 << CCE_PC_WIDTH)
 
-#define CFG_DCACHE_MODE 0x00200043
-#define CFG_ICACHE_MODE 0x00200022
-#define CFG_CCE_MODE 0x00200081
+#define CFG_DOMAIN_MASK_ADDR    0x00200009
+#define CFG_SAC_MASK_ADDR       0x0020000a
+#define CFG_DCACHE_MODE_ADDR    0x00200043
+#define CFG_ICACHE_MODE_ADDR    0x00200022
+#define CFG_CCE_MODE_ADDR       0x00200081
 #define CFG_CCE_UCODE_BASE_ADDR 0x00208000
 
 .section .text.start
@@ -64,20 +76,30 @@ loop:
     addi t1, t1, -1
     bnez t1, loop
 
+    /* Enable Domains*/
+    li t0, DOMAIN_MASK
+    li t1, CFG_DOMAIN_MASK_ADDR
+    sd t0, 0(t1)
+
+    /* Enable SAC */
+    li t0, SAC_MASK
+    li t1, CFG_SAC_MASK_ADDR
+    sd t0, 0(t1)
+
     /* Write D$ mode */
     li t0, 1
-    li t1, CFG_DCACHE_MODE
+    li t1, CFG_DCACHE_MODE_ADDR
     sd t0, 0(t1)
 
     /* Write I$ mode */
-    li t1, CFG_ICACHE_MODE
+    li t1, CFG_ICACHE_MODE_ADDR
     sd t0, 0(t1)
 
     /* Write CCE mode */
-    li t1, CFG_CCE_MODE 
+    li t1, CFG_CCE_MODE_ADDR 
     sd t0, 0(t1)
 
-    /* TODO: Load program from memory */
+    /* Load program from memory */
 
     li x31, DRAM_BASE_ADDR
     csrw dpc, x31

@@ -9,4 +9,4 @@ clean:
 	rm -f bootrom.riscv *.bin *.out
 
 build:
-	$(RISCV_GCC) bootrom.S -o bootrom.riscv -Tlink.ld -static -Wl,--no-gc-sections
+	$(RISCV_GCC) bootrom.S -DNUM_CORES=1 -DDOMAIN_MASK=0x01 -DSAC_MASK=0x0 -o bootrom.riscv -Tlink.ld -static -Wl,--no-gc-sections
