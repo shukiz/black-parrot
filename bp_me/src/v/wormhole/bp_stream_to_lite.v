@@ -18,31 +18,27 @@ module bp_stream_to_lite
    , input                                   reset_i
 
    // Master BP Stream
-   , input [out_mem_msg_header_width_lp-1:0] mem_header_i
-   , input [out_data_width_p-1:0]            mem_data_i
+   , input [in_mem_msg_header_width_lp-1:0]  mem_header_i
+   , input [in_data_width_p-1:0]             mem_data_i
    , input                                   mem_v_i
-   , input                                   mem_ready_o
+   , output logic                            mem_ready_o
    , input                                   mem_lock_i
 
    // Client BP Lite
-   , output logic [in_mem_msg_width_lp-1:0]  mem_o
+   , output logic [out_mem_msg_width_lp-1:0] mem_o
    , output logic                            mem_v_o
    , input                                   mem_yumi_i
    );
 
   `declare_bp_mem_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, in_mem);
   `declare_bp_mem_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, out_mem);
-  bp_out_mem_msg_s mem_cast_o;
-  assign mem_o = mem_cast_o;
 
   localparam in_data_bytes_lp = in_data_width_p/8;
   localparam out_data_bytes_lp = out_data_width_p/8;
-  localparam stream_words_lp = in_data_width_p/out_data_width_p;
-  localparam data_ptr_width_lp = `BSG_SAFE_CLOG2(stream_words_lp);
+  localparam stream_words_lp = out_data_width_p/in_data_width_p;
   localparam stream_offset_width_lp = `BSG_SAFE_CLOG2(out_data_bytes_lp);
 
   bp_in_mem_msg_header_s header_lo;
-  logic mem_v_lo, mem_yumi_li;
   bsg_one_fifo
    #(.width_p($bits(bp_in_mem_msg_header_s)))
    header_fifo
@@ -54,39 +50,45 @@ module bp_stream_to_lite
      ,.v_i(mem_v_i)
 
      ,.data_o(header_lo)
-     ,.v_o(mem_v_lo)
-     ,.yumi_i(mem_yumi_li)
+     ,.yumi_i(mem_yumi_i)
 
-     // We rely on sipo handshaking
+     // We use the sipo ready/valid
      ,.ready_o(/* Unused */)
+     ,.v_o(/* Unused */)
      );
 
-  logic [out_data_width_p-1:0] data_lo;
-  wire is_wr = mem_cast_i.header.msg_type inside {e_mem_msg_uc_wr, e_mem_msg_wr};
-  wire [data_ptr_width_lp-1:0] num_stream_cmds = (master_p ^ is_wr)
+  bp_in_mem_msg_header_s mem_header_cast_i;
+  assign mem_header_cast_i = mem_header_i;
+  wire is_wr = mem_header_cast_i.msg_type inside {e_mem_msg_uc_wr, e_mem_msg_wr};
+  localparam data_len_width_lp = `BSG_SAFE_CLOG2(stream_words_lp);
+  wire [data_len_width_lp-1:0] num_stream_cmds = (master_p ^ is_wr)
     ? 1'b1
-    : `BSG_MAX(((1'b1 << mem_lo.size) / out_data_bytes_lp), 1'b1);
+    : `BSG_MAX(((1'b1 << mem_header_cast_i.size) / out_data_bytes_lp), 1'b1);
+  logic [out_data_width_p-1:0] data_lo;
+  logic data_ready_lo, len_ready_lo;
   bsg_serial_in_parallel_out_dynamic
-   #(.width_p(out_data_width_p), .max_els_p(stream_words_lp))
+   #(.width_p(in_data_width_p), .max_els_p(stream_words_lp))
    sipo
     (.clk_i(clk_i)
      ,.reset_i(reset_i)
 
      ,.data_i(mem_data_i)
-     ,.len_i(num_stream_cmds)
+     ,.len_i(num_stream_cmds-1'b1)
      ,.v_i(mem_v_i)
-     ,.ready_o(mem_ready_o)
 
      ,.data_o(data_lo)
      ,.v_o(mem_v_o)
      ,.yumi_i(mem_yumi_i)
 
+     // We rely on fifo ready signal
+     ,.ready_o(mem_ready_o)
      ,.len_ready_o(/* Unused */)
      );
 
   wire unused = &{mem_lock_i};
 
-  assign mem_cast_o = '{header: header, data: data_lo};
+  bp_out_mem_msg_s mem_cast_o;
+  assign mem_cast_o = '{header: header_lo, data: data_lo};
   assign mem_o = mem_cast_o;
 
   //synopsys translate_off
