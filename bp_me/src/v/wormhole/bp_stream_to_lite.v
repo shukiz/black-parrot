@@ -63,7 +63,7 @@ module bp_stream_to_lite
   localparam data_len_width_lp = `BSG_SAFE_CLOG2(stream_words_lp);
   wire [data_len_width_lp-1:0] num_stream_cmds = (master_p ^ is_wr)
     ? 1'b1
-    : `BSG_MAX(((1'b1 << mem_header_cast_i.size) / out_data_bytes_lp), 1'b1);
+    : `BSG_MAX(((1'b1 << mem_header_cast_i.size) / in_data_bytes_lp), 1'b1);
   logic [out_data_width_p-1:0] data_lo;
   logic data_ready_lo, len_ready_lo;
   bsg_serial_in_parallel_out_dynamic
