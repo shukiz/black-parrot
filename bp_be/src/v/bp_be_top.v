@@ -13,7 +13,7 @@ module bp_be_top
  import bp_be_pkg::*;
  import bp_common_cfg_link_pkg::*;
  import bp_be_dcache_pkg::*;
- #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
+ #(parameter bp_params_e bp_params_p = e_bp_default_cfg
    `declare_bp_proc_params(bp_params_p)
    `declare_bp_fe_be_if_widths(vaddr_width_p, paddr_width_p, asid_width_p, branch_metadata_fwd_width_p)
    `declare_bp_cache_service_if_widths(paddr_width_p, ptag_width_p, dcache_sets_p, dcache_assoc_p, dword_width_p, dcache_block_width_p, dcache_fill_width_p, dcache)
@@ -96,11 +96,13 @@ module bp_be_top
 
   bp_be_commit_pkt_s commit_pkt;
   bp_be_trap_pkt_s trap_pkt;
-  bp_be_wb_pkt_s wb_pkt;
+  bp_be_wb_pkt_s iwb_pkt, fwb_pkt;
 
   bp_be_isd_status_s isd_status;
   logic [vaddr_width_p-1:0] expected_npc_lo;
   logic poison_isd_lo, suppress_iss_lo;
+
+  logic fpu_en_lo;
 
   logic [rv64_priv_width_gp-1:0] priv_mode_lo;
   logic [ptag_width_p-1:0]       satp_ppn_lo;
@@ -160,8 +162,6 @@ module bp_be_top
     (.clk_i(clk_i)
      ,.reset_i(reset_i)
 
-     ,.cfg_bus_i(cfg_bus_i)
-
      ,.isd_status_o(isd_status)
      ,.expected_npc_i(expected_npc_lo)
      ,.poison_iss_i(flush)
@@ -170,6 +170,7 @@ module bp_be_top
      ,.cache_miss_v_i(trap_pkt.rollback)
      ,.cmt_v_i(commit_pkt.queue_v)
      ,.suppress_iss_i(suppress_iss_lo)
+     ,.fpu_en_i(fpu_en_lo)
 
      ,.fe_queue_i(fe_queue_i)
      ,.fe_queue_v_i(fe_queue_v_i)
@@ -181,7 +182,8 @@ module bp_be_top
 
      ,.dispatch_pkt_o(dispatch_pkt)
 
-     ,.wb_pkt_i(wb_pkt)
+     ,.iwb_pkt_i(iwb_pkt)
+     ,.fwb_pkt_i(fwb_pkt)
      );
 
   bp_be_calculator_top
@@ -197,12 +199,14 @@ module bp_be_top
      ,.flush_i(flush)
 
      ,.calc_status_o(calc_status)
+     ,.fpu_en_o(fpu_en_lo)
 
      ,.ptw_fill_pkt_o(ptw_fill_pkt)
 
      ,.commit_pkt_o(commit_pkt)
      ,.trap_pkt_o(trap_pkt)
-     ,.wb_pkt_o(wb_pkt)
+     ,.iwb_pkt_o(iwb_pkt)
+     ,.fwb_pkt_o(fwb_pkt)
 
      ,.timer_irq_i(timer_irq_i)
      ,.software_irq_i(software_irq_i)

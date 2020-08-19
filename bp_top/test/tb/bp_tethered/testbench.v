@@ -18,7 +18,7 @@ module testbench
  #(parameter bp_params_e bp_params_p = BP_CFG_FLOWVAR // Replaced by the flow with a specific bp_cfg
    `declare_bp_proc_params(bp_params_p)
    `declare_bp_fe_be_if_widths(vaddr_width_p, paddr_width_p, asid_width_p, branch_metadata_fwd_width_p)
-   `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
+   `declare_bp_mem_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, cce_mem)
 
    // Tracing parameters
    , parameter calc_trace_p                = 0
@@ -31,38 +31,37 @@ module testbench
    , parameter dcache_trace_p              = 0
    , parameter vm_trace_p                  = 0
    , parameter core_profile_p              = 0
-   , parameter preload_mem_p               = 0
    , parameter checkpoint_p                = 0
    , parameter cosim_p                     = 0
-   , parameter cosim_memsize_p             = 256
+   , parameter cosim_memsize_p             = 0
    , parameter cosim_cfg_file_p            = "prog.cfg"
    , parameter cosim_instr_p               = 0
    , parameter warmup_instr_p              = 0
-
-   , parameter mem_zero_p         = 1
-   , parameter mem_file_p         = "prog.mem"
-   , parameter mem_cap_in_bytes_p = 2**28
+   , parameter preload_mem_p               = 0
+   , parameter dram_fixed_latency_p        = 0
    , parameter [paddr_width_p-1:0] mem_offset_p = dram_base_addr_gp
-
-   // Number of elements in the fake BlackParrot memory
-   , parameter use_max_latency_p      = 0
-   , parameter use_random_latency_p   = 0
-   , parameter use_dramsim2_latency_p = 0
-
-   , parameter max_latency_p = 15
-
-   , parameter dram_clock_period_in_ps_p = `BP_SIM_CLK_PERIOD
-   , parameter dram_cfg_p                = "dram_ch.ini"
-   , parameter dram_sys_cfg_p            = "dram_sys.ini"
-   , parameter dram_capacity_p           = 16384
+   , parameter mem_cap_in_bytes_p = 2**27
+   , parameter mem_file_p         = "prog.mem"
    )
   (input clk_i
    , input reset_i
+   , input dram_clk_i
+   , input dram_reset_i
    );
 
 import "DPI-C" context function bit get_finish(int hartid);
+export "DPI-C" function get_dram_period;
+export "DPI-C" function get_sim_period;
 
-`declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
+function int get_dram_period();
+  return (`dram_pkg::tck_ps);
+endfunction
+
+function int get_sim_period();
+  return (`BP_SIM_CLK_PERIOD);
+endfunction
+
+`declare_bp_mem_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, cce_mem)
 
 logic [num_core_p-1:0] program_finish_lo;
 logic [num_core_p-1:0] cosim_finish_lo;
@@ -120,21 +119,11 @@ wrapper
 
 bp_mem
  #(.bp_params_p(bp_params_p)
-   ,.mem_cap_in_bytes_p(mem_cap_in_bytes_p)
-   ,.mem_load_p(preload_mem_p)
-   ,.mem_zero_p(mem_zero_p)
-   ,.mem_file_p(mem_file_p)
    ,.mem_offset_p(mem_offset_p)
-
-   ,.use_max_latency_p(use_max_latency_p)
-   ,.use_random_latency_p(use_random_latency_p)
-   ,.use_dramsim2_latency_p(use_dramsim2_latency_p)
-   ,.max_latency_p(max_latency_p)
-
-   ,.dram_clock_period_in_ps_p(dram_clock_period_in_ps_p)
-   ,.dram_cfg_p(dram_cfg_p)
-   ,.dram_sys_cfg_p(dram_sys_cfg_p)
-   ,.dram_capacity_p(dram_capacity_p)
+   ,.mem_load_p(preload_mem_p)
+   ,.mem_file_p(mem_file_p)
+   ,.mem_cap_in_bytes_p(mem_cap_in_bytes_p)
+   ,.dram_fixed_latency_p(dram_fixed_latency_p)
    )
  mem
   (.clk_i(clk_i)
@@ -147,6 +136,9 @@ bp_mem
    ,.mem_resp_o(proc_mem_resp_li)
    ,.mem_resp_v_o(proc_mem_resp_v_li)
    ,.mem_resp_yumi_i(proc_mem_resp_yumi_lo)
+
+   ,.dram_clk_i(dram_clk_i)
+   ,.dram_reset_i(dram_reset_i)
    );
 
 bp_nonsynth_nbf_loader
@@ -199,9 +191,13 @@ bind bp_be_top
      ,.commit_pc_i(calculator.commit_pkt.pc)
      ,.commit_instr_i(calculator.commit_pkt.instr)
 
-     ,.rd_w_v_i(scheduler.wb_pkt.rd_w_v)
-     ,.rd_addr_i(scheduler.wb_pkt.rd_addr)
-     ,.rd_data_i(scheduler.wb_pkt.rd_data)
+     ,.ird_w_v_i(scheduler.iwb_pkt.rd_w_v)
+     ,.ird_addr_i(scheduler.iwb_pkt.rd_addr)
+     ,.ird_data_i(scheduler.iwb_pkt.rd_data)
+
+     ,.frd_w_v_i(scheduler.fwb_pkt.rd_w_v)
+     ,.frd_addr_i(scheduler.fwb_pkt.rd_addr)
+     ,.frd_data_i(scheduler.fwb_pkt.rd_data)
      );
 
 bind bp_be_top
@@ -228,9 +224,13 @@ bind bp_be_top
      ,.commit_pc_i(calculator.commit_pkt.pc)
      ,.commit_instr_i(calculator.commit_pkt.instr)
 
-     ,.rd_w_v_i(scheduler.wb_pkt.rd_w_v)
-     ,.rd_addr_i(scheduler.wb_pkt.rd_addr)
-     ,.rd_data_i(scheduler.wb_pkt.rd_data)
+     ,.ird_w_v_i(scheduler.iwb_pkt.rd_w_v)
+     ,.ird_addr_i(scheduler.iwb_pkt.rd_addr)
+     ,.ird_data_i(scheduler.iwb_pkt.rd_data)
+
+     ,.frd_w_v_i(scheduler.fwb_pkt.rd_w_v)
+     ,.frd_addr_i(scheduler.fwb_pkt.rd_addr)
+     ,.frd_data_i(scheduler.fwb_pkt.rd_data)
 
      ,.interrupt_v_i(calculator.pipe_sys.csr.trap_pkt_cast_o._interrupt)
      ,.cause_i((calculator.pipe_sys.csr.priv_mode_n == `PRIV_MODE_S)
@@ -329,11 +329,11 @@ bind bp_be_top
         
        ,.cache_req_complete_i(cache_req_complete_i)
 
-       ,.v_o(v_o)
-       ,.load_data(data_o)
-       ,.cache_miss_o(dcache_miss_o)
+       ,.v_o(early_v_o)
+       ,.load_data(early_data_o[0+:65])
+       ,.cache_miss_o('0)
        ,.wt_req(wt_req)
-       ,.store_data(data_tv_r)
+       ,.store_data(data_tv_r[0+:dword_width_p])
 
        ,.data_mem_v_i(data_mem_v_li)
        ,.data_mem_pkt_v_i(data_mem_pkt_v_i)
@@ -384,8 +384,8 @@ bind bp_be_top
        ,.cache_req_complete_i(cache_req_complete_i)
 
        ,.v_o(data_v_o)
-       ,.load_data(dword_width_p'(data_o))
-       ,.cache_miss_o(miss_o)
+       ,.load_data(65'(data_o))
+       ,.cache_miss_o('0)
        ,.wt_req()
        ,.store_data(dword_width_p'(0))
 
@@ -472,14 +472,14 @@ bind bp_be_top
 
        ,.dtlb_miss(be.calculator.pipe_mem.dtlb_miss_v)
        ,.dcache_miss(~be.calculator.pipe_mem.dcache.ready_o)
-       ,.long_haz(be.detector.long_haz_v)
+       ,.long_haz(be.detector.struct_haz_v)
        ,.exception(be.director.trap_pkt.exception)
        ,.eret(be.director.trap_pkt.eret)
        ,._interrupt(be.director.trap_pkt._interrupt)
        ,.control_haz(be.detector.control_haz_v)
        ,.data_haz(be.detector.data_haz_v)
-       ,.load_dep((be.detector.dep_status_li[0].mem_iwb_v
-                   | be.detector.dep_status_li[1].mem_iwb_v
+       ,.load_dep((be.detector.dep_status_li[0].emem_iwb_v
+                   | be.detector.dep_status_li[1].emem_iwb_v
                    ) & be.detector.data_haz_v
                   )
        ,.mul_dep((be.detector.dep_status_li[0].mul_iwb_v
@@ -528,13 +528,7 @@ bind bp_be_top
        ,.program_finish_i(testbench.program_finish_lo | testbench.cosim_finish_lo)
        );
 
-  // TODO: There should be a param about whether to instantiate the uncore, rather than a list of
-  //   unicore configs
-  if (!((bp_params_p == e_bp_unicore_cfg)
-        || (bp_params_p == e_bp_unicore_no_l2_cfg)
-        || (bp_params_p == e_bp_unicore_l1_small_cfg)
-        || (bp_params_p == e_bp_unicore_l1_medium_cfg)
-        ))
+  if (multicore_p)
     begin
       bind bp_cce_wrapper
         bp_me_nonsynth_cce_tracer

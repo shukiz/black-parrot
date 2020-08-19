@@ -3,8 +3,6 @@
  *
  */
  
-`include "bp_me_cce_mem_if.vh"
-
 module bp_me_cce_to_cache
 
   import bp_cce_pkg::*;
@@ -13,9 +11,9 @@ module bp_me_cce_to_cache
   import bp_me_pkg::*;
   import bsg_cache_pkg::*;
 
-  #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
+  #(parameter bp_params_e bp_params_p = e_bp_default_cfg
     `declare_bp_proc_params(bp_params_p)
-    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
+    `declare_bp_mem_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, cce_mem)
 
     , parameter block_size_in_words_lp=cce_block_width_p/dword_width_p
     , parameter lg_sets_lp=`BSG_SAFE_CLOG2(l2_sets_p)
@@ -57,7 +55,7 @@ module bp_me_cce_to_cache
   `declare_bsg_cache_pkt_s(paddr_width_p, dword_width_p);
   
   // cce logics
-  `declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p);
+  `declare_bp_mem_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, cce_mem);
   
   bsg_cache_pkt_s cache_pkt;
   assign cache_pkt_o = cache_pkt;
@@ -186,8 +184,8 @@ module bp_me_cce_to_cache
       SEND: begin
         v_o = 1'b1;
         case (mem_cmd_lo.header.msg_type)
-          e_cce_mem_rd
-          ,e_cce_mem_uc_rd:
+          e_mem_msg_rd
+          ,e_mem_msg_uc_rd:
             case (mem_cmd_lo.header.size)
               e_mem_msg_size_1: cache_pkt.opcode = LB;
               e_mem_msg_size_2: cache_pkt.opcode = LH;
@@ -198,8 +196,8 @@ module bp_me_cce_to_cache
               ,e_mem_msg_size_64: cache_pkt.opcode = LM;
               default: cache_pkt.opcode = LB;
             endcase
-          e_cce_mem_uc_wr
-          ,e_cce_mem_wr   :
+          e_mem_msg_uc_wr
+          ,e_mem_msg_wr   :
             case (mem_cmd_lo.header.size)
               e_mem_msg_size_1: cache_pkt.opcode = SB;
               e_mem_msg_size_2: cache_pkt.opcode = SH;
@@ -332,7 +330,16 @@ module bp_me_cce_to_cache
      ,.data_i(mem_cmd_lo.header)
      ,.data_o(mem_resp_cast_o.header)
      );
-  assign mem_resp_cast_o.data = resp_data_r;
+
+  bsg_bus_pack
+   #(.width_p(cce_block_width_p))
+   pack
+    (.data_i(resp_data_r)
+     ,.sel_i(mem_resp_cast_o.header.addr[0+:block_offset_width_lp])
+     ,.size_i(mem_resp_cast_o.header.size)
+
+     ,.data_o(mem_resp_cast_o.data)
+     );
 
   always_comb begin
     yumi_o = 1'b0;

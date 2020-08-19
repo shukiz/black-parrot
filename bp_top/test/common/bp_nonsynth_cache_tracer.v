@@ -4,7 +4,7 @@ module bp_nonsynth_cache_tracer
  import bp_common_aviary_pkg::*;
  import bp_be_pkg::*;
  import bp_common_rv64_pkg::*;
- #( parameter bp_params_e bp_params_p = e_bp_inv_cfg
+ #( parameter bp_params_e bp_params_p = e_bp_default_cfg
   , parameter assoc_p = 8
   , parameter sets_p = 64
   , parameter block_width_p = 512
@@ -57,7 +57,7 @@ module bp_nonsynth_cache_tracer
 
    // Cache data
    , input                                                 v_o
-   , input [dword_width_p-1:0]                             load_data
+   , input [dpath_width_p-2:0]                             load_data
    , input                                                 cache_miss_o
    , input                                                 wt_req
    , input [dword_width_p-1:0]                             store_data

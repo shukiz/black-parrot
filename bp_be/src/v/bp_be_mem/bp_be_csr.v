@@ -3,13 +3,14 @@ module bp_be_csr
   import bp_common_aviary_pkg::*;
   import bp_common_rv64_pkg::*;
   import bp_be_pkg::*;
-  #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
+  #(parameter bp_params_e bp_params_p = e_bp_default_cfg
     `declare_bp_proc_params(bp_params_p)
 
     , localparam csr_cmd_width_lp = `bp_be_csr_cmd_width
 
     , localparam cfg_bus_width_lp = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
 
+    , localparam wb_pkt_width_lp = `bp_be_wb_pkt_width(vaddr_width_p)
     , localparam trap_pkt_width_lp = `bp_be_trap_pkt_width(vaddr_width_p)
     , localparam trans_info_width_lp = `bp_be_trans_info_width(ptag_width_p)
     )
@@ -25,6 +26,8 @@ module bp_be_csr
 
     // Misc interface
     , input                             instret_i
+    , input rv64_fflags_s               fflags_acc_i
+    , input                             frf_w_v_i
 
     , input                             exception_v_i
     , input [vaddr_width_p-1:0]         exception_pc_i
@@ -41,6 +44,8 @@ module bp_be_csr
     , output [trap_pkt_width_lp-1:0]    trap_pkt_o
 
     , output [trans_info_width_lp-1:0]  trans_info_o
+    , output rv64_frm_e                 frm_dyn_o
+    , output                            fpu_en_o
     );
 
 // Declare parameterizable structs
@@ -52,6 +57,7 @@ module bp_be_csr
 bp_cfg_bus_s cfg_bus_cast_i;
 bp_be_csr_cmd_s csr_cmd;
 
+bp_be_wb_pkt_s wb_pkt_cast_i;
 bp_be_trap_pkt_s trap_pkt_cast_o;
 bp_be_trans_info_s trans_info_cast_o;
 
@@ -76,6 +82,8 @@ wire is_debug_mode = debug_mode_r;
 wire is_m_mode = is_debug_mode | (priv_mode_r == `PRIV_MODE_M);
 wire is_s_mode = (priv_mode_r == `PRIV_MODE_S);
 wire is_u_mode = (priv_mode_r == `PRIV_MODE_U);
+
+`declare_csr(fcsr)
 
 // sstatus subset of mstatus
 // sedeleg hardcoded to 0
@@ -122,6 +130,8 @@ wire is_u_mode = (priv_mode_r == `PRIV_MODE_U);
 //   This is non-compliant. We should hardcode to 0 instead of trapping
 `declare_csr(dcsr)
 `declare_csr(dpc)
+`declare_csr(dscratch0)
+`declare_csr(dscratch1)
 
 wire mgie = (mstatus_r.mie & is_m_mode) | is_s_mode | is_u_mode;
 wire sgie = (mstatus_r.sie & is_s_mode) | is_u_mode;
@@ -227,7 +237,7 @@ always_comb
 
 logic [vaddr_width_p-1:0] apc_n, apc_r;
 bsg_dff_reset
- #(.width_p(vaddr_width_p), .reset_val_p(bootrom_base_addr_gp))
+ #(.width_p(vaddr_width_p), .reset_val_p($unsigned(boot_pc_p)))
  apc
   (.clk_i(clk_i)
    ,.reset_i(reset_i)
@@ -249,9 +259,8 @@ bsg_dff_reset_set_clear
  debug_mode_reg
   (.clk_i(clk_i)
    ,.reset_i('0)
-   // TODO: Should explicitly set freeze
-   ,.set_i(cfg_bus_cast_i.freeze | enter_debug)
-   ,.clear_i(exit_debug)
+   ,.set_i((reset_i & (boot_in_debug_p == 1'b1)) | enter_debug)
+   ,.clear_i((reset_i & (boot_in_debug_p == 1'b0)) | exit_debug)
 
    ,.data_o(debug_mode_r)
    );
@@ -320,6 +329,8 @@ always_comb
   begin
     priv_mode_n  = priv_mode_r;
 
+    fcsr_li = fcsr_lo;
+
     stvec_li      = stvec_lo;
     scounteren_li = scounteren_lo;
 
@@ -351,6 +362,8 @@ always_comb
     exit_debug  = '0;
     dcsr_li     = dcsr_lo;
     dpc_li      = dpc_lo;
+    dscratch0_li = dscratch0_lo;
+    dscratch1_li = dscratch1_lo;
 
     exception_v_o    = '0;
     interrupt_v_o    = '0;
@@ -444,6 +457,9 @@ always_comb
           begin
             // Read case
             unique casez (csr_cmd.csr_addr)
+              `CSR_ADDR_FFLAGS : csr_data_lo = fcsr_lo.fflags;
+              `CSR_ADDR_FRM    : csr_data_lo = fcsr_lo.frm;
+              `CSR_ADDR_FCSR   : csr_data_lo = fcsr_lo;
               `CSR_ADDR_CYCLE  : csr_data_lo = mcycle_lo;
               // Time must be done by trapping, since we can't stall at this point
               `CSR_ADDR_INSTRET: csr_data_lo = minstret_lo;
@@ -491,10 +507,15 @@ always_comb
               `CSR_ADDR_MCOUNTINHIBIT: csr_data_lo = mcountinhibit_lo;
               `CSR_ADDR_DCSR: csr_data_lo = dcsr_lo;
               `CSR_ADDR_DPC: csr_data_lo = dpc_lo;
+              `CSR_ADDR_DSCRATCH0: csr_data_lo = dscratch0_lo;
+              `CSR_ADDR_DSCRATCH1: csr_data_lo = dscratch1_lo;
               default: illegal_instr_o = 1'b1;
             endcase
             // Write case
             unique casez (csr_cmd.csr_addr)
+              `CSR_ADDR_FFLAGS : fcsr_li = '{frm: fcsr_lo.frm, fflags: csr_data_li, default: '0};
+              `CSR_ADDR_FRM    : fcsr_li = '{frm: csr_data_li, fflags: fcsr_lo.fflags, default: '0};
+              `CSR_ADDR_FCSR   : fcsr_li = csr_data_li;
               `CSR_ADDR_CYCLE  : mcycle_li = csr_data_li;
               // Time must be done by trapping, since we can't stall at this point
               `CSR_ADDR_INSTRET: minstret_li = csr_data_li;
@@ -535,6 +556,8 @@ always_comb
               `CSR_ADDR_MCOUNTINHIBIT: mcountinhibit_li = csr_data_li;
               `CSR_ADDR_DCSR: dcsr_li = csr_data_li;
               `CSR_ADDR_DPC: dpc_li = csr_data_li;
+              `CSR_ADDR_DSCRATCH0: dscratch0_li = csr_data_li;
+              `CSR_ADDR_DSCRATCH1: dscratch1_li = csr_data_li;
               default: illegal_instr_o = 1'b1;
             endcase
           end
@@ -634,6 +657,12 @@ always_comb
     mip_li.mtip = timer_irq_i;
     mip_li.msip = software_irq_i;
     mip_li.meip = external_irq_i;
+
+    // Accumulate FFLAGS
+    fcsr_li.fflags |= fflags_acc_i;
+
+    // Set FS to dirty if: fflags set, frf written, fcsr written
+    mstatus_li.fs |= {2{|fflags_acc_i | frf_w_v_i | (csr_cmd_v_i & (csr_cmd.csr_addr == `CSR_ADDR_FCSR))}};
   end
 
 // Debug Mode masks all interrupts
@@ -658,6 +687,9 @@ assign trans_info_cast_o.translation_en = translation_en_r
     | (mstatus_lo.mprv & (mstatus_lo.mpp < `PRIV_MODE_M) & (satp_lo.mode == 4'd8));
 assign trans_info_cast_o.mstatus_sum = mstatus_lo.sum;
 assign trans_info_cast_o.mstatus_mxr = mstatus_lo.mxr;
+
+assign frm_dyn_o = rv64_frm_e'(fcsr_lo.frm);
+assign fpu_en_o = (mstatus_lo.fs != 2'b00);
 
 endmodule
 

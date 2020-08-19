@@ -34,45 +34,75 @@ typedef enum logic [5:0]
 
 typedef enum logic [5:0]
 {
-  e_dcache_opcode_lb        = 6'b000000
-  ,e_dcache_opcode_lh       = 6'b000001
-  ,e_dcache_opcode_lw       = 6'b000010
-  ,e_dcache_opcode_ld       = 6'b000011
-  ,e_dcache_opcode_lbu      = 6'b000100
-  ,e_dcache_opcode_lhu      = 6'b000101
-  ,e_dcache_opcode_lwu      = 6'b000110
+  // Movement instructions
+  e_aux_op_f2f        = 6'b000000
+  ,e_aux_op_f2i       = 6'b000001
+  ,e_aux_op_i2f       = 6'b000010
+  ,e_aux_op_f2iu      = 6'b000011
+  ,e_aux_op_iu2f      = 6'b000100
+  ,e_aux_op_imvf      = 6'b000101
+  ,e_aux_op_fmvi      = 6'b000110
+  ,e_aux_op_fsgnj     = 6'b000111
+  ,e_aux_op_fsgnjn    = 6'b001000
+  ,e_aux_op_fsgnjx    = 6'b001001
 
-  ,e_dcache_opcode_sb       = 6'b001000
-  ,e_dcache_opcode_sh       = 6'b001001
-  ,e_dcache_opcode_sw       = 6'b001010
-  ,e_dcache_opcode_sd       = 6'b001011
+  // FCMP instructions
+  ,e_aux_op_feq       = 6'b001010
+  ,e_aux_op_flt       = 6'b001011
+  ,e_aux_op_fle       = 6'b001100
+  ,e_aux_op_fmax      = 6'b001101
+  ,e_aux_op_fmin      = 6'b001110
+  ,e_aux_op_fclass    = 6'b001111
+} bp_be_aux_fu_op_e;
 
-  ,e_dcache_opcode_lrw      = 6'b000111
-  ,e_dcache_opcode_scw      = 6'b001100
+typedef enum logic [5:0]
+{
+  e_dcache_op_lb        = 6'b000000
+  ,e_dcache_op_lh       = 6'b000001
+  ,e_dcache_op_lw       = 6'b000010
+  ,e_dcache_op_ld       = 6'b000011
+  ,e_dcache_op_lbu      = 6'b000100
+  ,e_dcache_op_lhu      = 6'b000101
+  ,e_dcache_op_lwu      = 6'b000110
 
-  ,e_dcache_opcode_lrd      = 6'b001101
-  ,e_dcache_opcode_scd      = 6'b001110
-  ,e_dcache_opcode_fencei   = 6'b001111
+  ,e_dcache_op_sb       = 6'b001000
+  ,e_dcache_op_sh       = 6'b001001
+  ,e_dcache_op_sw       = 6'b001010
+  ,e_dcache_op_sd       = 6'b001011
 
-  ,e_dcache_opcode_amoswapw = 6'b010000
-  ,e_dcache_opcode_amoaddw  = 6'b010001
-  ,e_dcache_opcode_amoxorw  = 6'b010010
-  ,e_dcache_opcode_amoandw  = 6'b010011
-  ,e_dcache_opcode_amoorw   = 6'b010100
-  ,e_dcache_opcode_amominw  = 6'b010101
-  ,e_dcache_opcode_amomaxw  = 6'b010110
-  ,e_dcache_opcode_amominuw = 6'b010111
-  ,e_dcache_opcode_amomaxuw = 6'b011000
+  ,e_dcache_op_lrw      = 6'b000111
+  ,e_dcache_op_scw      = 6'b001100
 
-  ,e_dcache_opcode_amoswapd = 6'b011001
-  ,e_dcache_opcode_amoaddd  = 6'b011010
-  ,e_dcache_opcode_amoxord  = 6'b011011
-  ,e_dcache_opcode_amoandd  = 6'b011100
-  ,e_dcache_opcode_amoord   = 6'b011101
-  ,e_dcache_opcode_amomind  = 6'b011110
-  ,e_dcache_opcode_amomaxd  = 6'b011111
-  ,e_dcache_opcode_amominud = 6'b100000
-  ,e_dcache_opcode_amomaxud = 6'b100001
+  ,e_dcache_op_lrd      = 6'b001101
+  ,e_dcache_op_scd      = 6'b001110
+
+  ,e_dcache_op_flw      = 6'b100010
+  ,e_dcache_op_fld      = 6'b100011
+
+  ,e_dcache_op_fsw      = 6'b100100
+  ,e_dcache_op_fsd      = 6'b100101
+
+  ,e_dcache_op_amoswapw = 6'b010000
+  ,e_dcache_op_amoaddw  = 6'b010001
+  ,e_dcache_op_amoxorw  = 6'b010010
+  ,e_dcache_op_amoandw  = 6'b010011
+  ,e_dcache_op_amoorw   = 6'b010100
+  ,e_dcache_op_amominw  = 6'b010101
+  ,e_dcache_op_amomaxw  = 6'b010110
+  ,e_dcache_op_amominuw = 6'b010111
+  ,e_dcache_op_amomaxuw = 6'b011000
+
+  ,e_dcache_op_amoswapd = 6'b011001
+  ,e_dcache_op_amoaddd  = 6'b011010
+  ,e_dcache_op_amoxord  = 6'b011011
+  ,e_dcache_op_amoandd  = 6'b011100
+  ,e_dcache_op_amoord   = 6'b011101
+  ,e_dcache_op_amomind  = 6'b011110
+  ,e_dcache_op_amomaxd  = 6'b011111
+  ,e_dcache_op_amominud = 6'b100000
+  ,e_dcache_op_amomaxud = 6'b100001
+
+  ,e_dcache_op_fencei   = 6'b111111
 } bp_be_dcache_fu_op_e;
 
 typedef enum logic [5:0]
@@ -95,6 +125,20 @@ typedef enum logic [5:0]
 
 typedef enum logic [5:0]
 {
+  e_fma_op_fadd    = 6'b000000
+  ,e_fma_op_fsub   = 6'b000001
+  ,e_fma_op_fmul   = 6'b000010
+  ,e_fma_op_fmadd  = 6'b000011
+  ,e_fma_op_fmsub  = 6'b000100
+  ,e_fma_op_fnmsub = 6'b000101
+  ,e_fma_op_fnmadd = 6'b000110
+  ,e_fma_op_imul   = 6'b000111
+  ,e_fma_op_fdiv   = 6'b001000
+  ,e_fma_op_fsqrt  = 6'b001001
+} bp_be_fma_fu_op_e;
+
+typedef enum logic [5:0]
+{
   e_mul_op_mul        = 6'b000000
   ,e_mul_op_div       = 6'b000001
   ,e_mul_op_divu      = 6'b000010
@@ -107,9 +151,11 @@ typedef struct packed
   union packed
   {
     bp_be_ctrl_fu_op_e     ctrl_fu_op;
+    bp_be_aux_fu_op_e      aux_fu_op;
     bp_be_int_fu_op_e      int_fu_op;
     bp_be_dcache_fu_op_e   dcache_op;
     bp_be_csr_fu_op_e      csr_fu_op;
+    bp_be_fma_fu_op_e      fma_fu_op;
     bp_be_mul_fu_op_e      mul_fu_op;
   }  fu_op;
 }  bp_be_fu_op_s;
@@ -149,26 +195,31 @@ typedef struct packed
   logic                             v;
   logic                             instr_v;
 
-  logic                             pipe_ctrl_v;
+  logic                             pipe_ctl_v;
   logic                             pipe_int_v;
-  logic                             pipe_mem_v;
+  logic                             pipe_mem_early_v;
+  logic                             pipe_aux_v;
+  logic                             pipe_mem_final_v;
   logic                             pipe_sys_v;
   logic                             pipe_mul_v;
-  logic                             pipe_fp_v;
+  logic                             pipe_fma_v;
   logic                             pipe_long_v;
 
   logic                             irf_w_v;
   logic                             frf_w_v;
-  logic                             mem_v;
+  logic                             fflags_w_v;
   logic                             dcache_r_v;
   logic                             dcache_w_v;
+  logic                             late_iwb_v;
+  logic                             late_fwb_v;
   logic                             fencei_v;
   logic                             csr_w_v;
   logic                             csr_r_v;
   logic                             csr_v;
-  logic                             serial_v;
-  logic                             fp_not_int_v;
+  logic                             mem_v;
   logic                             opw_v;
+  logic                             ops_v;
+
   logic                             no_amo_return;
 
   bp_be_fu_op_s                     fu_op;
@@ -176,8 +227,6 @@ typedef struct packed
   bp_be_src1_e                      src1_sel;
   bp_be_src2_e                      src2_sel;
   bp_be_baddr_e                     baddr_sel;
-  bp_be_offset_e                    offset_sel;
-  bp_be_result_e                    result_sel;
 
   logic                             itlb_miss;
   logic                             instr_access_fault;

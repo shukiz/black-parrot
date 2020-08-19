@@ -9,13 +9,13 @@
  * Notes:
  *
  */
-module bp_be_pipe_ctrl
+module bp_be_pipe_ctl
  import bp_common_pkg::*;
  import bp_common_aviary_pkg::*;
  import bp_common_rv64_pkg::*;
  import bp_be_pkg::*;
  import bp_be_dcache_pkg::*;
- #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
+ #(parameter bp_params_e bp_params_p = e_bp_default_cfg
    `declare_bp_proc_params(bp_params_p)
 
    , localparam dispatch_pkt_width_lp = `bp_be_dispatch_pkt_width(vaddr_width_p)
@@ -25,7 +25,7 @@ module bp_be_pipe_ctrl
 
    , input [dispatch_pkt_width_lp-1:0] reservation_i
 
-   , output [dword_width_p-1:0]        data_o
+   , output [dpath_width_p-1:0]        data_o
    , output [vaddr_width_p-1:0]        br_tgt_o
    , output                            btaken_o
    );
@@ -47,7 +47,7 @@ module bp_be_pipe_ctrl
 
   logic btaken;
   always_comb
-    if (decode.pipe_ctrl_v)
+    if (decode.pipe_ctl_v)
       case (decode.fu_op)
         e_ctrl_op_beq  : btaken = (rs1 == rs2);
         e_ctrl_op_bne  : btaken = (rs1 != rs2);

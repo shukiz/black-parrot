@@ -9,7 +9,7 @@
 #ifndef BP_CCE_INST_H
 #define BP_CCE_INST_H
 
-#include "bp_common_me_if.h"
+#include "bp_common_lce_cce_if.h"
 
 /*
  * Instruction width definitions
@@ -654,7 +654,7 @@ typedef union {
 
 typedef union {
   bp_lce_cmd_type_e      lce_cmd : bp_lce_cmd_type_width;
-  bp_cce_mem_cmd_type_e  mem_cmd : bp_cce_mem_cmd_type_width;
+  bp_mem_msg_e           mem_cmd : bp_cce_mem_cmd_type_width;
 } pushq_cmd_u;
 
 typedef struct {

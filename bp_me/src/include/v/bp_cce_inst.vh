@@ -13,7 +13,7 @@
  *   directly in hardware (e.g., ALU increment and decrement).
  *
  *   Note: this file may rely on defines from bsg_defines.h in the BaseJump STL repo.
- *   Note: this file relies on the LCE-CCE IF defines in bp_common_me_if.vh
+ *   Note: this file relies on the LCE-CCE IF defines in bp_common_lce_cce_if.vh
  */
 
 `ifndef BP_CCE_INST_VH
@@ -798,7 +798,7 @@ typedef struct packed {
     bp_cce_inst_mux_sel_way_e                    way_sel;
     // msg_size field must be same or fewer bits than way_sel field
     // currently, msg_size requires 3 bits to hold bp_mem_msg_size_e from
-    // bp_common_me_if.vh
+    // bp_common_lce_cce_if.vh
     logic [$bits(bp_cce_inst_mux_sel_way_e)-1:0] msg_size;
   }                                      way_or_size;
   bp_cce_inst_opd_gpr_e                  src_a;
@@ -807,7 +807,7 @@ typedef struct packed {
   union packed
   {
     bp_lce_cmd_type_e             lce_cmd;
-    bp_cce_mem_cmd_type_e         mem_cmd;
+    bp_mem_msg_e                  mem_cmd;
   }                                      cmd;
   logic                                  spec;
   logic                                  custom;
@@ -930,7 +930,7 @@ typedef struct packed {
   logic                                    lce_cmd_v;
   bp_lce_cmd_type_e                        lce_cmd;
   logic                                    mem_cmd_v;
-  bp_cce_mem_cmd_type_e                    mem_cmd;
+  bp_mem_msg_e                             mem_cmd;
   logic                                    inv_cmd_v;
 
   // GPR write mask

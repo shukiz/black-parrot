@@ -5,7 +5,7 @@ module bp_fe_mem
  import bp_fe_pkg::*;
  import bp_fe_icache_pkg::*;
  import bp_common_rv64_pkg::*;
- #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
+ #(parameter bp_params_e bp_params_p = e_bp_default_cfg
    `declare_bp_proc_params(bp_params_p)
    `declare_bp_cache_service_if_widths(paddr_width_p, ptag_width_p, icache_sets_p, icache_assoc_p, dword_width_p, icache_block_width_p, icache_fill_width_p, icache)
 
@@ -79,7 +79,7 @@ assign cfg_bus_cast_i = cfg_bus_i;
 assign mem_cmd_cast_i = mem_cmd_i;
 assign mem_resp_o     = mem_resp_cast_o;
 
-logic instr_page_fault_lo, instr_access_fault_lo, icache_miss_lo, itlb_miss_lo;
+logic instr_page_fault_lo, instr_access_fault_lo, itlb_miss_lo;
 
 logic fetch_ready;
 wire itlb_fence_v = mem_cmd_v_i & (mem_cmd_cast_i.op == e_fe_op_tlb_fence);
@@ -166,7 +166,6 @@ bp_fe_icache
 
    ,.data_o(icache_data_lo)
    ,.data_v_o(icache_data_v_lo)
-   ,.miss_o()
 
    // LCE Interface
 

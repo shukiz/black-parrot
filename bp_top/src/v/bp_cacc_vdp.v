@@ -7,10 +7,10 @@ module bp_cacc_vdp
  import bp_cce_pkg::*;
  import bp_me_pkg::*;
  import bp_be_dcache_pkg::*;
-  #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
+  #(parameter bp_params_e bp_params_p = e_bp_default_cfg
     `declare_bp_proc_params(bp_params_p)
     `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, cce_block_width_p)
-    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
+    `declare_bp_mem_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, cce_mem)
     `declare_bp_cache_service_if_widths(paddr_width_p, ptag_width_p, acache_sets_p, acache_assoc_p, dword_width_p, acache_block_width_p, acache_fill_width_p, cache)
 
     , localparam cfg_bus_width_lp= `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
@@ -47,12 +47,12 @@ module bp_cacc_vdp
     );
 
 
- `declare_bp_be_dcache_pkt_s(bp_page_offset_width_gp, dword_width_p);
+ `declare_bp_be_dcache_pkt_s(bp_page_offset_width_gp, dpath_width_p);
  `declare_bp_be_mem_structs(vaddr_width_p, ptag_width_p, lce_sets_p, cce_block_width_p/8);
    
   bp_be_dcache_pkt_s        dcache_pkt;   
   logic                     dcache_ready, dcache_v;
-  logic [dword_width_p-1:0] dcache_data;
+  logic [dpath_width_p-1:0] dcache_data;
   logic                     dcache_tlb_miss, dcache_poison;
   logic [ptag_width_p-1:0]  dcache_ptag;
   logic                     dcache_uncached;
@@ -69,7 +69,7 @@ module bp_cacc_vdp
   data_mem_pkt_v_i, data_mem_pkt_yumi_o,
   tag_mem_pkt_v_i, tag_mem_pkt_yumi_o,
   stat_mem_pkt_v_i, stat_mem_pkt_yumi_o,
-  cache_req_complete_lo;
+  cache_req_complete_lo, cache_req_critical_lo;
 
   `declare_bp_cache_service_if(paddr_width_p, ptag_width_p, acache_sets_p, acache_assoc_p, dword_width_p, acache_block_width_p, acache_fill_width_p, cache);
 
@@ -85,7 +85,10 @@ module bp_cacc_vdp
 bp_pma
  #(.bp_params_p(bp_params_p))
   pma
-   (.ptag_v_i(dcache_pkt_v)
+   (.clk_i(clk_i)
+    ,.reset_i(reset_i)
+    
+    ,.ptag_v_i(dcache_pkt_v)
     ,.ptag_i(dcache_ptag)
 
     ,.uncached_o(dcache_uncached)
@@ -103,18 +106,20 @@ bp_be_dcache
     ,.v_i(dcache_pkt_v)
     ,.ready_o(dcache_ready)
 
-    ,.v_o(dcache_v)
-    ,.data_o(dcache_data)
+    ,.early_v_o(dcache_v)
+    ,.early_data_o(dcache_data)
+    ,.final_v_o()
+    ,.final_data_o()
 
     ,.ptag_v_i(1'b1)
     ,.ptag_i(dcache_ptag)
     ,.uncached_i(dcache_uncached)
 
-    ,.poison_i(1'b0)
+    ,.flush_i(1'b0)
 
     // D$-LCE Interface
-    ,.dcache_miss_o(dcache_miss_v)
     ,.cache_req_complete_i(cache_req_complete_lo)
+    ,.cache_req_critical_i(cache_req_critical_lo)
     ,.cache_req_o(cache_req_cast_o)
     ,.cache_req_v_o(cache_req_v_o)
     ,.cache_req_ready_i(cache_req_ready_i)
@@ -136,13 +141,23 @@ bp_be_dcache
     );
 
 
-bp_be_dcache_lce
- #(.bp_params_p(bp_params_p))
+bp_lce
+ #(.bp_params_p(bp_params_p)
+   ,.assoc_p(dcache_assoc_p)
+   ,.sets_p(dcache_sets_p)
+   ,.block_width_p(dcache_block_width_p)
+   ,.fill_width_p(dcache_fill_width_p)
+   ,.timeout_max_limit_p(4)
+   ,.credits_p(coh_noc_max_credits_p)
+   ,.data_mem_invert_clk_p(1)
+   ,.tag_mem_invert_clk_p(1)
+   )
   be_lce
    (.clk_i(clk_i)
     ,.reset_i(reset_i)
 
     ,.lce_id_i(cfg_bus_cast_i.dcache_id)
+    ,.lce_mode_i(cfg_bus_cast_i.dcache_mode)
 
     ,.cache_req_i(cache_req_cast_o)
     ,.cache_req_v_i(cache_req_v_o)
@@ -151,6 +166,7 @@ bp_be_dcache_lce
     ,.cache_req_metadata_v_i(cache_req_metadata_v_o)
 
     ,.cache_req_complete_o(cache_req_complete_lo)
+    ,.cache_req_critical_o(cache_req_critical_lo)
 
     ,.data_mem_pkt_o(data_mem_pkt_i)
     ,.data_mem_pkt_v_o(data_mem_pkt_v_i)
@@ -189,7 +205,7 @@ bp_be_dcache_lce
 
 
   // CCE-IO interface is used for uncached requests-read/write memory mapped CSR
-   `declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p);
+   `declare_bp_mem_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, cce_mem);
 
   bp_cce_mem_msg_s io_resp_cast_o;
   bp_cce_mem_msg_s io_cmd_cast_i;
@@ -215,7 +231,7 @@ bp_be_dcache_lce
 
   bp_cce_mem_msg_payload_s  resp_payload;
   bp_mem_msg_size_e         resp_size;
-  bp_cce_mem_cmd_type_e     resp_msg;
+  bp_mem_msg_e              resp_msg;
   bp_local_addr_s          local_addr_li;
 
   assign local_addr_li = io_cmd_cast_i.header.addr;
@@ -277,7 +293,7 @@ bp_be_dcache_lce
     end
     if (state_r == DONE)
       start_cmd  <= '0;
-    else if (io_cmd_v_i & (io_cmd_cast_i.header.msg_type == e_cce_mem_uc_wr))
+    else if (io_cmd_v_i & (io_cmd_cast_i.header.msg_type == e_mem_msg_uc_wr))
     begin
       resp_size    <= io_cmd_cast_i.header.size;
       resp_payload <= io_cmd_cast_i.header.payload;
@@ -295,7 +311,7 @@ bp_be_dcache_lce
         default : begin end
       endcase
     end
-    else if (io_cmd_v_i & (io_cmd_cast_i.header.msg_type == e_cce_mem_uc_rd))
+    else if (io_cmd_v_i & (io_cmd_cast_i.header.msg_type == e_mem_msg_uc_rd))
     begin
       resp_size    <= io_cmd_cast_i.header.size;
       resp_payload <= io_cmd_cast_i.header.payload;
@@ -351,7 +367,7 @@ bp_be_dcache_lce
       FETCH: begin
         state_n = WAIT_DCACHE_C1;
         dcache_ptag = {(ptag_width_p-vtag_width_p)'(0), v_addr[vaddr_width_p-1-:vtag_width_p]};
-        dcache_pkt.opcode = load ? e_dcache_opcode_ld : e_dcache_opcode_sd;
+        dcache_pkt.opcode = load ? e_dcache_op_ld : e_dcache_op_sd;
         dcache_pkt.data = load ? '0 : dot_product_res; 
         dcache_pkt.page_offset = v_addr[0+:page_offset_width_p];
         res_status = '0;
@@ -362,7 +378,7 @@ bp_be_dcache_lce
         state_n = WAIT_DCACHE_C2;
         res_status = '0;
         dcache_ptag = {(ptag_width_p-vtag_width_p)'(0), v_addr[vaddr_width_p-1-:vtag_width_p]};
-        dcache_pkt.opcode = load ? e_dcache_opcode_ld : e_dcache_opcode_sd;
+        dcache_pkt.opcode = load ? e_dcache_op_ld : e_dcache_op_sd;
         dcache_pkt.page_offset = v_addr[0+:page_offset_width_p];
         dcache_pkt.data = load ? '0 : dot_product_res;
         dcache_pkt_v = '0;
@@ -376,7 +392,7 @@ bp_be_dcache_lce
                             : WAIT_FETCH);
         res_status = '0;
         dcache_ptag = {(ptag_width_p-vtag_width_p)'(0), v_addr[vaddr_width_p-1-:vtag_width_p]};
-        dcache_pkt.opcode = load ? e_dcache_opcode_ld : e_dcache_opcode_sd;
+        dcache_pkt.opcode = load ? e_dcache_op_ld : e_dcache_op_sd;
         dcache_pkt.data = load ? '0 : dot_product_res;
         dcache_pkt.page_offset = v_addr[0+:page_offset_width_p];
         dcache_pkt_v = '0;
@@ -386,7 +402,7 @@ bp_be_dcache_lce
         state_n = (len_a_cnt == input_len) ? FETCH_VEC2 : WAIT_FETCH;
         res_status = '0;
         dcache_ptag = {(ptag_width_p-vtag_width_p)'(0), v_addr[vaddr_width_p-1-:vtag_width_p]};
-        dcache_pkt.opcode = load ? e_dcache_opcode_ld : e_dcache_opcode_sd;
+        dcache_pkt.opcode = load ? e_dcache_op_ld : e_dcache_op_sd;
         dcache_pkt.data = load ? '0 : dot_product_res;
         dcache_pkt.page_offset = v_addr[0+:page_offset_width_p];
         dcache_pkt_v = '0;
@@ -396,7 +412,7 @@ bp_be_dcache_lce
         state_n = WAIT_FETCH;
         res_status = '0;
         dcache_ptag = {(ptag_width_p-vtag_width_p)'(0), v_addr[vaddr_width_p-1-:vtag_width_p]};
-        dcache_pkt.opcode = load ? e_dcache_opcode_ld : e_dcache_opcode_sd;
+        dcache_pkt.opcode = load ? e_dcache_op_ld : e_dcache_op_sd;
         dcache_pkt.data = load ? '0 : dot_product_res;
         dcache_pkt.page_offset = v_addr[0+:page_offset_width_p];
         dcache_pkt_v = '0;
@@ -407,7 +423,7 @@ bp_be_dcache_lce
         state_n= (len_b_cnt == input_len) ? WB_RESULT : WAIT_FETCH;
         res_status = '0;
         dcache_ptag = {(ptag_width_p-vtag_width_p)'(0), v_addr[vaddr_width_p-1-:vtag_width_p]};
-        dcache_pkt.opcode = load ? e_dcache_opcode_ld : e_dcache_opcode_sd;
+        dcache_pkt.opcode = load ? e_dcache_op_ld : e_dcache_op_sd;
         dcache_pkt.data = load ? '0 : dot_product_res;
         dcache_pkt.page_offset = v_addr[0+:page_offset_width_p];
         dcache_pkt_v = '0;

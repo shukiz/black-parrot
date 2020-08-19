@@ -20,7 +20,7 @@ module bp_be_instr_decoder
  import bp_common_rv64_pkg::*;
  import bp_common_aviary_pkg::*;
  import bp_be_pkg::*;
- #(parameter bp_params_e bp_params_p = e_bp_inv_cfg
+ #(parameter bp_params_e bp_params_p = e_bp_default_cfg
    `declare_bp_proc_params(bp_params_p)
 
    // Generated parameters
@@ -33,9 +33,11 @@ module bp_be_instr_decoder
 
    , output [decode_width_lp-1:0]    decode_o
    , output [dword_width_p-1:0]      imm_o
+
+   , input                           fpu_en_i
    );
 
-  rv64_instr_rtype_s instr;
+  rv64_instr_fmatype_s instr;
   bp_be_decode_s decode;
   logic [dword_width_p-1:0] imm;
 
@@ -53,29 +55,34 @@ module bp_be_instr_decoder
       decode.instr_v       = 1'b1;
 
       // Destination pipe
-      decode.pipe_ctrl_v   = '0;
-      decode.pipe_int_v    = '0;
-      decode.pipe_mem_v    = '0;
-      decode.pipe_mul_v    = '0;
-      decode.pipe_fp_v     = '0;
-      decode.pipe_long_v   = '0;
+      decode.pipe_ctl_v       = '0;
+      decode.pipe_int_v       = '0;
+      decode.pipe_mem_early_v = '0;
+      decode.pipe_aux_v       = '0;
+      decode.pipe_mem_final_v = '0;
+      decode.pipe_mul_v       = '0;
+      decode.pipe_fma_v       = '0;
+      decode.pipe_long_v      = '0;
 
       // R/W signals
       decode.irf_w_v       = '0;
       decode.frf_w_v       = '0;
+      decode.fflags_w_v    = '0;
       decode.dcache_r_v    = '0;
       decode.dcache_w_v    = '0;
       decode.csr_r_v       = '0;
       decode.csr_w_v       = '0;
+      decode.late_iwb_v    = '0;
+      decode.late_fwb_v    = '0;
 
       // Metadata signals
       decode.mem_v         = '0;
       decode.csr_v         = '0;
-      decode.serial_v      = '0;
 
       // Decode metadata
-      decode.fp_not_int_v  = '0;
       decode.opw_v         = '0;
+      decode.ops_v         = '0;
+
       decode.no_amo_return = '0;
 
       // Decode control signals
@@ -83,8 +90,6 @@ module bp_be_instr_decoder
       decode.src1_sel      = bp_be_src1_e'('0);
       decode.src2_sel      = bp_be_src2_e'('0);
       decode.baddr_sel     = bp_be_baddr_e'('0);
-      decode.result_sel    = bp_be_result_e'('0);
-      decode.offset_sel    = e_offset_is_imm;
 
       imm                  = '0;
       illegal_instr        = '0;
@@ -97,12 +102,15 @@ module bp_be_instr_decoder
             else if (instr inside {`RV64_DIV, `RV64_DIVU, `RV64_DIVW, `RV64_DIVUW
                                    ,`RV64_REM, `RV64_REMU, `RV64_REMW, `RV64_REMUW
                                    })
-              decode.pipe_long_v = 1'b1;
+              begin
+                decode.pipe_long_v = 1'b1;
+                decode.late_iwb_v  = 1'b1;
+              end
             else
               decode.pipe_int_v = 1'b1;
 
             // The writeback for long latency ops comes out of band
-            decode.irf_w_v    = ~decode.pipe_long_v;
+            decode.irf_w_v    = ~decode.late_iwb_v;
             decode.opw_v      = (instr.opcode == `RV64_OP_32_OP);
             unique casez (instr)
               `RV64_ADD, `RV64_ADDW : decode.fu_op = e_int_op_add;
@@ -116,7 +124,7 @@ module bp_be_instr_decoder
               `RV64_OR              : decode.fu_op = e_int_op_or;
               `RV64_AND             : decode.fu_op = e_int_op_and;
 
-              `RV64_MUL, `RV64_MULW   : decode.fu_op = e_mul_op_mul;
+              `RV64_MUL, `RV64_MULW   : decode.fu_op = e_fma_op_imul;
               `RV64_DIV, `RV64_DIVW   : decode.fu_op = e_mul_op_div;
               `RV64_DIVU, `RV64_DIVUW : decode.fu_op = e_mul_op_divu;
               `RV64_REM, `RV64_REMW   : decode.fu_op = e_mul_op_rem;
@@ -126,7 +134,6 @@ module bp_be_instr_decoder
 
             decode.src1_sel   = e_src1_is_rs1;
             decode.src2_sel   = e_src2_is_rs2;
-            decode.result_sel = e_result_from_alu;
           end
         `RV64_OP_IMM_OP, `RV64_OP_IMM_32_OP :
           begin
@@ -148,7 +155,6 @@ module bp_be_instr_decoder
 
             decode.src1_sel   = e_src1_is_rs1;
             decode.src2_sel   = e_src2_is_imm;
-            decode.result_sel = e_result_from_alu;
           end
         `RV64_LUI_OP :
           begin
@@ -156,7 +162,6 @@ module bp_be_instr_decoder
             decode.irf_w_v    = 1'b1;
             decode.fu_op      = e_int_op_pass_src2;
             decode.src2_sel   = e_src2_is_imm;
-            decode.result_sel = e_result_from_alu;
           end
         `RV64_AUIPC_OP :
           begin
@@ -165,18 +170,17 @@ module bp_be_instr_decoder
             decode.fu_op      = e_int_op_add;
             decode.src1_sel   = e_src1_is_pc;
             decode.src2_sel   = e_src2_is_imm;
-            decode.result_sel = e_result_from_alu;
           end
         `RV64_JAL_OP :
           begin
-            decode.pipe_ctrl_v = 1'b1;
+            decode.pipe_ctl_v = 1'b1;
             decode.irf_w_v    = 1'b1;
             decode.fu_op      = e_ctrl_op_jal;
             decode.baddr_sel  = e_baddr_is_pc;
           end
         `RV64_JALR_OP :
           begin
-            decode.pipe_ctrl_v = 1'b1;
+            decode.pipe_ctl_v = 1'b1;
             decode.irf_w_v    = 1'b1;
             unique casez (instr)
               `RV64_JALR: decode.fu_op = e_ctrl_op_jalr;
@@ -186,7 +190,7 @@ module bp_be_instr_decoder
           end
         `RV64_BRANCH_OP :
           begin
-            decode.pipe_ctrl_v = 1'b1;
+            decode.pipe_ctl_v = 1'b1;
             unique casez (instr)
               `RV64_BEQ  : decode.fu_op = e_ctrl_op_beq;
               `RV64_BNE  : decode.fu_op = e_ctrl_op_bne;
@@ -200,32 +204,63 @@ module bp_be_instr_decoder
           end
         `RV64_LOAD_OP :
           begin
-            decode.pipe_mem_v = 1'b1;
+            decode.pipe_mem_early_v = 1'b1;
             decode.irf_w_v    = 1'b1;
             decode.dcache_r_v = 1'b1;
             decode.mem_v      = 1'b1;
             unique casez (instr)
-              `RV64_LB : decode.fu_op = e_dcache_opcode_lb;
-              `RV64_LH : decode.fu_op = e_dcache_opcode_lh;
-              `RV64_LW : decode.fu_op = e_dcache_opcode_lw;
-              `RV64_LBU: decode.fu_op = e_dcache_opcode_lbu;
-              `RV64_LHU: decode.fu_op = e_dcache_opcode_lhu;
-              `RV64_LWU: decode.fu_op = e_dcache_opcode_lwu;
-              `RV64_LD : decode.fu_op = e_dcache_opcode_ld;
+              `RV64_LB : decode.fu_op = e_dcache_op_lb;
+              `RV64_LH : decode.fu_op = e_dcache_op_lh;
+              `RV64_LW : decode.fu_op = e_dcache_op_lw;
+              `RV64_LBU: decode.fu_op = e_dcache_op_lbu;
+              `RV64_LHU: decode.fu_op = e_dcache_op_lhu;
+              `RV64_LWU: decode.fu_op = e_dcache_op_lwu;
+              `RV64_LD : decode.fu_op = e_dcache_op_ld;
               default : illegal_instr = 1'b1;
+            endcase
+          end
+        `RV64_FLOAD_OP :
+          begin
+            decode.pipe_mem_final_v = 1'b1;
+            decode.frf_w_v    = 1'b1;
+            decode.dcache_r_v = 1'b1;
+            decode.mem_v      = 1'b1;
+            decode.ops_v      = instr inside {`RV64_FL_W};
+
+            illegal_instr = ~fpu_en_i;
+
+            unique casez (instr)
+              `RV64_FL_W: decode.fu_op = e_dcache_op_flw;
+              `RV64_FL_D: decode.fu_op = e_dcache_op_fld;
+              default: illegal_instr = 1'b1;
             endcase
           end
         `RV64_STORE_OP :
           begin
-            decode.pipe_mem_v = 1'b1;
+            decode.pipe_mem_early_v = 1'b1;
             decode.dcache_w_v = 1'b1;
             decode.mem_v      = 1'b1;
             unique casez (instr)
-              `RV64_SB : decode.fu_op = e_dcache_opcode_sb;
-              `RV64_SH : decode.fu_op = e_dcache_opcode_sh;
-              `RV64_SW : decode.fu_op = e_dcache_opcode_sw;
-              `RV64_SD : decode.fu_op = e_dcache_opcode_sd;
+              `RV64_SB : decode.fu_op = e_dcache_op_sb;
+              `RV64_SH : decode.fu_op = e_dcache_op_sh;
+              `RV64_SW : decode.fu_op = e_dcache_op_sw;
+              `RV64_SD : decode.fu_op = e_dcache_op_sd;
               default : illegal_instr = 1'b1;
+            endcase
+          end
+        `RV64_FSTORE_OP :
+          begin
+            decode.pipe_mem_early_v = 1'b1;
+            decode.dcache_w_v = 1'b1;
+            decode.mem_v      = 1'b1;
+            decode.ops_v      = instr inside {`RV64_FS_W};
+
+            illegal_instr = ~fpu_en_i;
+
+            unique casez (instr)
+              `RV64_FS_W : decode.fu_op = e_dcache_op_fsw;
+              `RV64_FS_D : decode.fu_op = e_dcache_op_fsd;
+              default: illegal_instr = 1'b1;
             endcase
           end
         `RV64_MISC_MEM_OP :
@@ -234,10 +269,9 @@ module bp_be_instr_decoder
               `RV64_FENCE   : begin end
               `RV64_FENCE_I :
                 begin
-                  decode.pipe_mem_v  = 1'b1;
+                  decode.pipe_mem_early_v = 1'b1;
                   decode.dcache_w_v  = 1'b1;
-                  decode.serial_v    = 1'b1;
-                  decode.fu_op       = e_dcache_opcode_fencei;
+                  decode.fu_op       = e_dcache_op_fencei;
                 end
               default : illegal_instr = 1'b1;
             endcase
@@ -246,7 +280,6 @@ module bp_be_instr_decoder
           begin
             decode.pipe_sys_v = 1'b1;
             decode.csr_v      = 1'b1;
-            decode.serial_v   = 1'b1;
             unique casez (instr)
               `RV64_ECALL      : decode.fu_op = e_ecall;
               `RV64_EBREAK     : decode.fu_op = e_ebreak;
@@ -273,19 +306,13 @@ module bp_be_instr_decoder
                 end
             endcase
           end
-        `RV64_AMO_OP:
+        `RV64_FP_OP:
           begin
-            decode.pipe_mem_v = 1'b1;
-            decode.irf_w_v    = 1'b1;
-            decode.dcache_r_v = 1'b1;
-            decode.dcache_w_v = 1'b1;
-            decode.mem_v      = 1'b1;
-            decode.offset_sel = e_offset_is_zero;
-            // Note: could do a more efficent decoding here by having atomic be a flag
-            //   And having the op simply taken from funct3
+            illegal_instr = ~fpu_en_i;
             unique casez (instr)
-              `RV64_LRW:
+              `RV64_FCVT_SD, `RV64_FCVT_DS:
                 begin
+<<<<<<< HEAD
                   if (lr_sc_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_lrw;
                     if (instr.rd_addr == '0) begin
@@ -294,9 +321,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FCVT_SD};
+                  decode.fu_op        = e_aux_op_f2f;
+>>>>>>> me_dev
                 end
-              `RV64_SCW:
+              `RV64_FCVT_WS, `RV64_FCVT_LS:
                 begin
+<<<<<<< HEAD
                   if (lr_sc_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_scw;
                     if (instr.rd_addr == '0) begin
@@ -305,9 +340,18 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.irf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FCVT_WS};
+                  decode.ops_v        = 1'b1;
+                  decode.fu_op        = e_aux_op_f2i;
+>>>>>>> me_dev
                 end
-              `RV64_AMOSWAPW:
+              `RV64_FCVT_WUS, `RV64_FCVT_LUS:
                 begin
+<<<<<<< HEAD
                   if (amo_swap_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoswapw;
                     if (instr.rd_addr == '0) begin
@@ -316,9 +360,18 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.irf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FCVT_WUS};
+                  decode.ops_v        = 1'b1;
+                  decode.fu_op        = e_aux_op_f2iu;
+>>>>>>> me_dev
                 end
-              `RV64_AMOADDW:
+              `RV64_FCVT_SW, `RV64_FCVT_SL:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoaddw;
                     if (instr.rd_addr == '0) begin
@@ -327,9 +380,18 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FCVT_SW};
+                  decode.ops_v        = 1'b1;
+                  decode.fu_op        = e_aux_op_i2f;
+>>>>>>> me_dev
                 end
-              `RV64_AMOXORW:
+              `RV64_FCVT_SWU, `RV64_FCVT_SLU:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_logic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoxorw;
                     if (instr.rd_addr == '0) begin
@@ -338,9 +400,18 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FCVT_SWU};
+                  decode.ops_v        = 1'b1;
+                  decode.fu_op        = e_aux_op_iu2f;
+>>>>>>> me_dev
                 end
-              `RV64_AMOANDW:
+              `RV64_FCVT_WD, `RV64_FCVT_LD:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_logic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoandw;
                     if (instr.rd_addr == '0) begin
@@ -349,9 +420,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.irf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FCVT_WD};
+                  decode.fu_op        = e_aux_op_f2i;
+>>>>>>> me_dev
                 end
-              `RV64_AMOORW:
+              `RV64_FCVT_WUD, `RV64_FCVT_LUD:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_logic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoorw;
                     if (instr.rd_addr == '0) begin
@@ -360,9 +439,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.irf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FCVT_WUD};
+                  decode.fu_op        = e_aux_op_f2iu;
+>>>>>>> me_dev
                 end
-              `RV64_AMOMINW:
+              `RV64_FCVT_DW, `RV64_FCVT_DL:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amominw;
                     if (instr.rd_addr == '0) begin
@@ -371,9 +458,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FCVT_DW};
+                  decode.fu_op        = e_aux_op_i2f;
+>>>>>>> me_dev
                 end
-              `RV64_AMOMAXW:
+              `RV64_FCVT_DWU, `RV64_FCVT_DLU:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amomaxw;
                     if (instr.rd_addr == '0) begin
@@ -382,9 +477,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FCVT_DWU};
+                  decode.fu_op        = e_aux_op_iu2f;
+>>>>>>> me_dev
                 end
-              `RV64_AMOMINUW:
+              `RV64_FMV_XW, `RV64_FMV_XD:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amominuw;
                     if (instr.rd_addr == '0) begin
@@ -393,9 +496,18 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.irf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FMV_XW};
+                  decode.ops_v        = instr inside {`RV64_FMV_XW};
+                  decode.fu_op        = e_aux_op_fmvi;
+>>>>>>> me_dev
                 end
-              `RV64_AMOMAXUW:
+              `RV64_FMV_WX, `RV64_FMV_DX:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amomaxuw;
                     if (instr.rd_addr == '0) begin
@@ -404,9 +516,18 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.opw_v        = instr inside {`RV64_FMV_WX};
+                  decode.ops_v        = instr inside {`RV64_FMV_WX};
+                  decode.fu_op        = e_aux_op_imvf;
+>>>>>>> me_dev
                 end
-              `RV64_LRD:
+              `RV64_FSGNJ_S, `RV64_FSGNJ_D:
                 begin
+<<<<<<< HEAD
                   if (lr_sc_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_lrd;
                     if (instr.rd_addr == '0) begin
@@ -415,9 +536,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FSGNJ_S};
+                  decode.fu_op        = e_aux_op_fsgnj;
+>>>>>>> me_dev
                 end
-              `RV64_SCD:
+              `RV64_FSGNJN_S, `RV64_FSGNJN_D:
                 begin
+<<<<<<< HEAD
                   if (lr_sc_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_scd;
                     if (instr.rd_addr == '0) begin
@@ -426,9 +555,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FSGNJN_S};
+                  decode.fu_op        = e_aux_op_fsgnjn;
+>>>>>>> me_dev
                 end
-              `RV64_AMOSWAPD:
+              `RV64_FSGNJX_S, `RV64_FSGNJX_D:
                 begin
+<<<<<<< HEAD
                   if (amo_swap_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoswapd;
                     if (instr.rd_addr == '0) begin
@@ -437,9 +574,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FSGNJX_S};
+                  decode.fu_op        = e_aux_op_fsgnjx;
+>>>>>>> me_dev
                 end
-              `RV64_AMOADDD:
+              `RV64_FMIN_S, `RV64_FMIN_D:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoaddd;
                     if (instr.rd_addr == '0) begin
@@ -448,9 +593,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FMIN_S};
+                  decode.fu_op        = e_aux_op_fmin;
+>>>>>>> me_dev
                 end
-              `RV64_AMOXORD:
+              `RV64_FMAX_S, `RV64_FMAX_D:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_logic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoxord;
                     if (instr.rd_addr == '0) begin
@@ -459,9 +612,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FMAX_S};
+                  decode.fu_op        = e_aux_op_fmax;
+>>>>>>> me_dev
                 end
-              `RV64_AMOANDD:
+              `RV64_FEQ_S, `RV64_FEQ_D:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_logic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoandd;
                     if (instr.rd_addr == '0) begin
@@ -470,9 +631,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.irf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FEQ_S};
+                  decode.fu_op        = e_aux_op_feq;
+>>>>>>> me_dev
                 end
-              `RV64_AMOORD:
+              `RV64_FLT_S, `RV64_FLT_D:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_logic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amoord;
                     if (instr.rd_addr == '0) begin
@@ -481,9 +650,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.irf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FLT_S};
+                  decode.fu_op        = e_aux_op_flt;
+>>>>>>> me_dev
                 end
-              `RV64_AMOMIND:
+              `RV64_FLE_S, `RV64_FLE_D:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amomind;
                     if (instr.rd_addr == '0) begin
@@ -492,9 +669,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.irf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FLE_S};
+                  decode.fu_op        = e_aux_op_fle;
+>>>>>>> me_dev
                 end
-              `RV64_AMOMAXD:
+              `RV64_FCLASS_S, `RV64_FCLASS_D:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amomaxd;
                     if (instr.rd_addr == '0) begin
@@ -503,9 +688,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_aux_v   = 1'b1;
+                  decode.irf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FCLASS_S};
+                  decode.fu_op        = e_aux_op_fclass;
+>>>>>>> me_dev
                 end
-              `RV64_AMOMINUD:
+              `RV64_FADD_S, `RV64_FADD_D:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amominud;
                     if (instr.rd_addr == '0) begin
@@ -514,9 +707,17 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_fma_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FADD_S};
+                  decode.fu_op        = e_fma_op_fadd;
+>>>>>>> me_dev
                 end
-              `RV64_AMOMAXUD:
+              `RV64_FSUB_S, `RV64_FSUB_D:
                 begin
+<<<<<<< HEAD
                   if (amo_fetch_arithmetic_p != e_none) begin
                     decode.fu_op = e_dcache_opcode_amomaxud;
                     if (instr.rd_addr == '0) begin
@@ -525,8 +726,109 @@ module bp_be_instr_decoder
                   end else begin
                     illegal_instr = 1'b1;
                   end
+=======
+                  decode.pipe_fma_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FSUB_S};
+                  decode.fu_op        = e_fma_op_fsub;
+>>>>>>> me_dev
                 end
+              `RV64_FMUL_S, `RV64_FMUL_D:
+                begin
+                  decode.pipe_fma_v   = 1'b1;
+                  decode.frf_w_v      = 1'b1;
+                  decode.fflags_w_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FMUL_S};
+                  decode.fu_op        = e_fma_op_fmul;
+                end
+              `RV64_FDIV_S, `RV64_FDIV_D:
+                begin
+                  decode.pipe_long_v  = 1'b1;
+                  decode.late_fwb_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FDIV_S};
+                  decode.fu_op        = e_fma_op_fdiv;
+                end
+              `RV64_FSQRT_S, `RV64_FSQRT_D:
+                begin
+                  decode.pipe_long_v  = 1'b1;
+                  decode.late_fwb_v   = 1'b1;
+                  decode.ops_v        = instr inside {`RV64_FSQRT_S};
+                  decode.fu_op        = e_fma_op_fsqrt;
+                end
+              default: illegal_instr = 1'b1;
+            endcase
+          end
+
+
+        `RV64_FMADD_OP, `RV64_FMSUB_OP, `RV64_FNMSUB_OP, `RV64_FNMADD_OP:
+          begin
+            decode.pipe_fma_v = 1'b1;
+            decode.frf_w_v    = 1'b1;
+            decode.fflags_w_v = 1'b1;
+            decode.ops_v      = (instr.fmt == e_fmt_single);
+
+            casez (instr.opcode)
+              `RV64_FMADD_OP : decode.fu_op = e_fma_op_fmadd;
+              `RV64_FMSUB_OP : decode.fu_op = e_fma_op_fmsub;
+              `RV64_FNMSUB_OP: decode.fu_op = e_fma_op_fnmsub;
+              `RV64_FNMADD_OP: decode.fu_op = e_fma_op_fnmadd;
+              default: decode.fu_op = e_fma_op_fmadd;
+            endcase
+
+            illegal_instr = ~fpu_en_i;
+          end
+
+        `RV64_AMO_OP:
+          begin
+            decode.pipe_mem_early_v = 1'b1;
+            decode.irf_w_v    = 1'b1;
+            decode.dcache_r_v = 1'b1;
+            decode.dcache_w_v = 1'b1;
+            decode.mem_v      = 1'b1;
+            // Note: could do a more efficent decoding here by having atomic be a flag
+            //   And having the op simply taken from funct3
+            unique casez (instr)
+              `RV64_LRD      : decode.fu_op = e_dcache_op_lrd;
+              `RV64_LRW      : decode.fu_op = e_dcache_op_lrw;
+              `RV64_SCD      : decode.fu_op = e_dcache_op_scd;
+              `RV64_SCW      : decode.fu_op = e_dcache_op_scw;
+              `RV64_AMOSWAPD : decode.fu_op = e_dcache_op_amoswapd;
+              `RV64_AMOSWAPW : decode.fu_op = e_dcache_op_amoswapw;
+              `RV64_AMOADDD  : decode.fu_op = e_dcache_op_amoaddd;
+              `RV64_AMOADDW  : decode.fu_op = e_dcache_op_amoaddw;
+              `RV64_AMOXORD  : decode.fu_op = e_dcache_op_amoxord;
+              `RV64_AMOXORW  : decode.fu_op = e_dcache_op_amoxorw;
+              `RV64_AMOANDD  : decode.fu_op = e_dcache_op_amoandd;
+              `RV64_AMOANDW  : decode.fu_op = e_dcache_op_amoandw;
+              `RV64_AMOORD   : decode.fu_op = e_dcache_op_amoord;
+              `RV64_AMOORW   : decode.fu_op = e_dcache_op_amoorw;
+              `RV64_AMOMIND  : decode.fu_op = e_dcache_op_amomind;
+              `RV64_AMOMINW  : decode.fu_op = e_dcache_op_amominw;
+              `RV64_AMOMAXD  : decode.fu_op = e_dcache_op_amomaxd;
+              `RV64_AMOMAXW  : decode.fu_op = e_dcache_op_amomaxw;
+              `RV64_AMOMINUD : decode.fu_op = e_dcache_op_amominud;
+              `RV64_AMOMINUW : decode.fu_op = e_dcache_op_amominuw;
+              `RV64_AMOMAXUD : decode.fu_op = e_dcache_op_amomaxud;
+              `RV64_AMOMAXUW : decode.fu_op = e_dcache_op_amomaxuw;
               default : illegal_instr = 1'b1;
+            endcase
+
+            // Detect AMO support level
+            unique casez (instr)
+              `RV64_LRD, `RV64_LRW, `RV64_SCD, `RV64_SCW:
+                illegal_instr = (lr_sc_p == e_none);
+              `RV64_AMOSWAPD, `RV64_AMOSWAPW:
+                illegal_instr = (amo_swap_p == e_none);
+              `RV64_AMOANDD, `RV64_AMOANDW
+              ,`RV64_AMOORD, `RV64_AMOORW
+              ,`RV64_AMOXORD, `RV64_AMOXORW:
+                illegal_instr = (amo_fetch_logic_p == e_none);
+              `RV64_AMOADDD, `RV64_AMOADDW
+              ,`RV64_AMOMIND, `RV64_AMOMINW, `RV64_AMOMAXD, `RV64_AMOMAXW
+              ,`RV64_AMOMINUD, `RV64_AMOMINUW, `RV64_AMOMAXUD, `RV64_AMOMAXUW:
+                illegal_instr = (amo_fetch_arithmetic_p == e_none);
+              default: begin end
             endcase
           end
         default : illegal_instr = 1'b1;
@@ -555,12 +857,14 @@ module bp_be_instr_decoder
           imm = `rv64_signext_j_imm(instr);
         `RV64_BRANCH_OP:
           imm = `rv64_signext_b_imm(instr);
-        `RV64_STORE_OP:
+        `RV64_STORE_OP, `RV64_FSTORE_OP:
           imm = `rv64_signext_s_imm(instr);
-        `RV64_JALR_OP, `RV64_LOAD_OP, `RV64_OP_IMM_OP, `RV64_OP_IMM_32_OP:
+        `RV64_JALR_OP, `RV64_LOAD_OP, `RV64_OP_IMM_OP, `RV64_OP_IMM_32_OP, `RV64_FLOAD_OP:
           imm = `rv64_signext_i_imm(instr);
         `RV64_SYSTEM_OP:
           imm = `rv64_signext_c_imm(instr);
+        `RV64_AMO_OP:
+          imm = '0;
         default: begin end
       endcase
     end

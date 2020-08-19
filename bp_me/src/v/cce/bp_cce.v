@@ -14,7 +14,7 @@ module bp_cce
   import bp_cce_pkg::*;
   import bp_common_cfg_link_pkg::*;
   import bp_me_pkg::*;
-  #(parameter bp_params_e bp_params_p      = e_bp_inv_cfg
+  #(parameter bp_params_e bp_params_p      = e_bp_default_cfg
     `declare_bp_proc_params(bp_params_p)
 
     // Derived parameters
@@ -34,7 +34,7 @@ module bp_cce
     , localparam cfg_bus_width_lp          = `bp_cfg_bus_width(vaddr_width_p, core_id_width_p, cce_id_width_p, lce_id_width_p, cce_pc_width_p, cce_instr_width_p)
     `declare_bp_lce_cce_if_header_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p)
     `declare_bp_lce_cce_if_widths(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, cce_block_width_p)
-    `declare_bp_me_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p)
+    `declare_bp_mem_if_widths(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, cce_mem)
   )
   (input                                               clk_i
    , input                                             reset_i
@@ -96,7 +96,7 @@ module bp_cce
   //synopsys translate_on
 
   // LCE-CCE and Mem-CCE Interface
-  `declare_bp_me_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p);
+  `declare_bp_mem_if(paddr_width_p, cce_block_width_p, lce_id_width_p, lce_assoc_p, cce_mem);
   `declare_bp_lce_cce_if(cce_id_width_p, lce_id_width_p, paddr_width_p, lce_assoc_p, cce_block_width_p);
 
   // Config Interface
@@ -227,6 +227,7 @@ module bp_cce
   logic                                      msg_lce_resp_busy_lo;
   logic                                      msg_mem_resp_busy_lo;
   logic                                      msg_busy_lo;
+  logic                                      msg_mem_credits_empty_lo;
 
   // From Stall Unit
   //logic [counter_width_lp-1:0]               stall_count_lo;
@@ -623,6 +624,8 @@ module bp_cce
       ,.mem_resp_busy_o(msg_mem_resp_busy_lo)
       // Stall ucode (as in inv command being processed)
       ,.busy_o(msg_busy_lo)
+      // memory credits empty
+      ,.mem_credits_empty_o(msg_mem_credits_empty_lo)
 
       );
 
@@ -668,6 +671,7 @@ module bp_cce
 
       ,.lce_cmd_ready_i(lce_cmd_ready_i)
       ,.mem_cmd_ready_i(mem_cmd_ready_i)
+      ,.mem_credits_empty_i(msg_mem_credits_empty_lo)
 
       // From Messague Unit
       ,.msg_busy_i(msg_busy_lo)
