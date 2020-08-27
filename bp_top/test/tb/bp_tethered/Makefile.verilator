@@ -88,5 +88,5 @@ $(SIM_DIR)/tire_kick: $(TOUCH_DIR) $(RESULTS_DIR) $(LOG_DIR) $(REPORT_DIR) $(SIM
 	cp $(BP_TEST_MEM_DIR)/hello_world.mem  $(@D)/prog.mem
 	cp $(BP_TEST_MEM_DIR)/hello_world.dump $(@D)/prog.dump
 	cp $(CCE_MEM_PATH)/$(CCE_MEM) $(@D)/cce_ucode.mem
+	cd $(@D); python $(MEM2NBF) $(NBF_INPUTS) > prog.nbf
 	cd $(@D); ./simsc $(VERILATOR_OPTIONS) $(VERILATOR_PLUSARGS)
-
