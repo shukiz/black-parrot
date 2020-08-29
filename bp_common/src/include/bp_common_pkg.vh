@@ -56,11 +56,11 @@ package bp_common_pkg;
   localparam test_reg_base_addr_gp     = 32'h0030_b008;
   
   /* Hardware-Looper registers */
-  localparam hw_looper_control_reg_addr_gp             = 32'h0050_0000;
-  localparam hw_looper_global_start_index_reg_addr_gp  = 32'h0050_0008;
-  localparam hw_looper_global_end_index_reg_addr_gp    = 32'h0050_0010;
-  localparam hw_looper_local_start_index_reg_addr_gp   = 32'h0050_0018;
-  localparam hw_looper_local_end_index_reg_addr_gp     = 32'h0050_0020;
+  localparam hw_looper_control_reg_addr_gp                = 32'h0050_0000;
+  localparam hw_looper_global_start_index_reg_addr_gp     = 32'h0050_0008;
+  localparam hw_looper_global_end_index_reg_addr_gp       = 32'h0050_0010;
+  localparam hw_looper_next_alloc_start_index_reg_addr_gp = 32'h0050_0018;
+  localparam hw_looper_allocation_size_reg_addr_gp        = 32'h0050_0020;
 
   localparam cache_tagfl_base_addr_gp  = 20'h0_0000;
 

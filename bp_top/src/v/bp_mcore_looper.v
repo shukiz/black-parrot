@@ -67,8 +67,8 @@ module bp_mcore_looper
     logic control_cmd_v;
     logic global_start_index_cmd_v;
     logic global_end_index_cmd_v;
-    logic local_start_index_cmd_v;
-    logic local_end_index_cmd_v;
+    logic next_alloc_start_index_cmd_v;
+    logic allocation_size_cmd_v;
     logic wr_not_rd;
 
 	bp_local_addr_s local_addr;
@@ -76,21 +76,21 @@ module bp_mcore_looper
 
 	always_comb
 	begin
-        control_cmd_v            = 1'b0;
-        global_start_index_cmd_v = 1'b0;
-        global_end_index_cmd_v   = 1'b0;
-        local_start_index_cmd_v  = 1'b0;
-        local_end_index_cmd_v    = 1'b0;
+        control_cmd_v                = 1'b0;
+        global_start_index_cmd_v     = 1'b0;
+        global_end_index_cmd_v       = 1'b0;
+        next_alloc_start_index_cmd_v = 1'b0;
+        allocation_size_cmd_v        = 1'b0;
 
 		wr_not_rd = mem_cmd_lo.header.msg_type inside {e_cce_mem_wr, e_cce_mem_uc_wr};
 
 		unique 
 		casez ({local_addr.dev, local_addr.addr})
-            hw_looper_control_reg_addr_gp             : control_cmd_v            = small_fifo_v_lo;
-            hw_looper_global_start_index_reg_addr_gp  : global_start_index_cmd_v = small_fifo_v_lo;
-            hw_looper_global_end_index_reg_addr_gp    : global_end_index_cmd_v   = small_fifo_v_lo;
-            hw_looper_local_start_index_reg_addr_gp   : local_start_index_cmd_v  = small_fifo_v_lo;
-            hw_looper_local_end_index_reg_addr_gp     : local_end_index_cmd_v    = small_fifo_v_lo;
+            hw_looper_control_reg_addr_gp                : control_cmd_v                = small_fifo_v_lo;
+            hw_looper_global_start_index_reg_addr_gp     : global_start_index_cmd_v     = small_fifo_v_lo;
+            hw_looper_global_end_index_reg_addr_gp       : global_end_index_cmd_v       = small_fifo_v_lo;
+            hw_looper_next_alloc_start_index_reg_addr_gp : next_alloc_start_index_cmd_v = small_fifo_v_lo;
+            hw_looper_allocation_size_reg_addr_gp        : allocation_size_cmd_v        = small_fifo_v_lo;
 			default: begin end
 		endcase
 	end	
@@ -98,15 +98,21 @@ module bp_mcore_looper
     logic [dword_width_p-1:0] control_r;
     logic [dword_width_p-1:0] global_start_index_r;
     logic [dword_width_p-1:0] global_end_index_r;
-    logic [dword_width_p-1:0] local_start_index_r;
-    logic [dword_width_p-1:0] local_end_index_r;
+    logic [dword_width_p-1:0] next_alloc_start_index_r;
+    logic [dword_width_p-1:0] allocation_size_r;
 
     logic [dword_width_p-1:0] hwlooper_control_n;
     logic [dword_width_p-1:0] hwlooper_global_start_index_n;
     logic [dword_width_p-1:0] hwlooper_global_end_index_n;
-    logic [dword_width_p-1:0] hwlooper_local_start_index_n;
-    logic [dword_width_p-1:0] hwlooper_local_end_index_n;
-        
+    logic [dword_width_p-1:0] hwlooper_next_alloc_start_index_n;
+    logic [dword_width_p-1:0] hwlooper_allocation_size_n;
+    
+    /* 
+       A 64-bit register in the following format:
+       [Allocation last_index<HIGH 32bit> : Allocation start_index<LOW 32bit>]
+    */
+    logic [dword_width_p-1:0] hwlooper_work_allocation_n;
+    
     /* hw_looper_control_reg Instantiation */
     assign hwlooper_control_n = mem_cmd_lo.data[0+:dword_width_p];
     wire hwlooper_control_w_v_li = wr_not_rd & control_cmd_v;
@@ -152,35 +158,48 @@ module bp_mcore_looper
         );
     //assign external_irq_o = global_end_index_r;
 
-    /* hw_looper_local_start_index_reg Instantiation */
-    assign hwlooper_local_start_index_n = mem_cmd_lo.data[0+:dword_width_p];
-    wire hwlooper_local_start_index_w_v_li = wr_not_rd & local_start_index_cmd_v;
+    /* hw_looper_next_alloc_start_index_reg Instantiation */
+    //assign hwlooper_next_alloc_start_index_n = mem_cmd_lo.data[0+:dword_width_p];
+        
+    //assign hwlooper_next_alloc_start_index_n =
+    //    min( (next_alloc_start_index_r + allocation_size_r), global_end_index_r) );
+    always @* begin
+        if ( (next_alloc_start_index_r + allocation_size_r) > global_end_index_r)
+            hwlooper_next_alloc_start_index_n = global_end_index_r;
+        else
+            hwlooper_next_alloc_start_index_n = (next_alloc_start_index_r + allocation_size_r);
+    end
+    
+    assign hwlooper_work_allocation_n = 
+        (hwlooper_next_alloc_start_index_n << 32) | next_alloc_start_index_r;
+            
+    wire hwlooper_next_alloc_start_index_w_v_li = /*wr_not_rd &*/ next_alloc_start_index_cmd_v;
     bsg_dff_reset_en
         #(.width_p(dword_width_p))
-        hw_looper_local_start_index_reg
+        hw_looper_next_alloc_start_index_reg
         (.clk_i(clk_i)
          ,.reset_i(reset_i)
 
-         ,.en_i(hwlooper_local_start_index_w_v_li)
-         ,.data_i(hwlooper_local_start_index_n)
-         ,.data_o(local_start_index_r)
+         ,.en_i(hwlooper_next_alloc_start_index_w_v_li)
+         ,.data_i(hwlooper_next_alloc_start_index_n)
+         ,.data_o(next_alloc_start_index_r)
         );
-    //assign external_irq_o = local_start_index_r;
+    //assign external_irq_o = next_alloc_start_index_r;
 
-    /* hw_looper_local_end_index_reg Instantiation */
-    assign hwlooper_local_end_index_n = mem_cmd_lo.data[0+:dword_width_p];
-    wire hwlooper_local_end_index_w_v_li = wr_not_rd & local_end_index_cmd_v;
+    /* hw_looper_allocation_size_reg Instantiation */
+    assign hwlooper_allocation_size_n = mem_cmd_lo.data[0+:dword_width_p];
+    wire hwlooper_allocation_size_w_v_li = wr_not_rd & allocation_size_cmd_v;
     bsg_dff_reset_en
         #(.width_p(dword_width_p))
-        hw_looper_local_end_index_reg
+        hw_looper_allocation_size_reg
         (.clk_i(clk_i)
          ,.reset_i(reset_i)
 
-         ,.en_i(hwlooper_local_end_index_w_v_li)
-         ,.data_i(hwlooper_local_end_index_n)
-         ,.data_o(local_end_index_r)
+         ,.en_i(hwlooper_allocation_size_w_v_li)
+         ,.data_i(hwlooper_allocation_size_n)
+         ,.data_o(allocation_size_r)
         );
-    //assign external_irq_o = local_end_index_r;
+    //assign external_irq_o = allocation_size_r;
             
     /* Select register read */
     wire [dword_width_p-1:0] rdata_lo = control_cmd_v 
@@ -189,9 +208,9 @@ module bp_mcore_looper
           ? dword_width_p'(global_start_index_r)
           : global_end_index_cmd_v 
             ? dword_width_p'(global_end_index_r)
-            : local_start_index_cmd_v 
-              ? dword_width_p'(local_start_index_r)
-              : dword_width_p'(local_end_index_r); /* else ==> local_end_index_cmd_v */
+            : next_alloc_start_index_cmd_v 
+              ? dword_width_p'(hwlooper_work_allocation_n /*next_alloc_start_index_r*/)
+              : dword_width_p'(allocation_size_r); /* else ==> allocation_size_cmd_v */
         
     
     bp_cce_mem_msg_s mem_resp_lo;
