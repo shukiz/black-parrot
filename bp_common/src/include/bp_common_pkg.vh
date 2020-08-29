@@ -36,27 +36,37 @@ package bp_common_pkg;
   parameter bp_page_size_in_bytes_gp = 4096;
   parameter bp_page_offset_width_gp = `BSG_SAFE_CLOG2(bp_page_size_in_bytes_gp);
 
-  localparam host_dev_gp  = 1;
-  localparam cfg_dev_gp   = 2;
-  localparam clint_dev_gp = 3;
-  localparam cache_dev_gp = 4;
-
+  localparam host_dev_gp         = 1;
+  localparam cfg_dev_gp          = 2;
+  localparam clint_dev_gp        = 3;
+  localparam cache_dev_gp        = 4;
+  localparam mcore_looper_dev_gp = 5;
+      
                              // 0x00_0(nnnN)(D)(A_AAAA)
-  localparam host_dev_base_addr_gp     = 32'h0010_0000;
-  localparam cfg_dev_base_addr_gp      = 32'h0020_0000;
-  localparam clint_dev_base_addr_gp    = 32'h0030_0000;
-  localparam cache_dev_base_addr_gp    = 32'h0040_0000;
-  
+  localparam host_dev_base_addr_gp         = 32'h0010_0000;
+  localparam cfg_dev_base_addr_gp          = 32'h0020_0000;
+  localparam clint_dev_base_addr_gp        = 32'h0030_0000;
+  localparam cache_dev_base_addr_gp        = 32'h0040_0000;
+  localparam mcore_looper_dev_base_addr_gp = 32'h0050_0000;
+
   localparam mipi_reg_base_addr_gp     = 32'h0030_0000;
   localparam mtimecmp_reg_base_addr_gp = 32'h0030_4000;
   localparam mtime_reg_addr_gp         = 32'h0030_bff8;
   localparam plic_reg_base_addr_gp     = 32'h0030_b000;
+  localparam test_reg_base_addr_gp     = 32'h0030_b008;
+  
+  /* Hardware-Looper registers */
+  localparam hw_looper_control_reg_addr_gp             = 32'h0050_0000;
+  localparam hw_looper_global_start_index_reg_addr_gp  = 32'h0050_0008;
+  localparam hw_looper_global_end_index_reg_addr_gp    = 32'h0050_0010;
+  localparam hw_looper_local_start_index_reg_addr_gp   = 32'h0050_0018;
+  localparam hw_looper_local_end_index_reg_addr_gp     = 32'h0050_0020;
 
   localparam cache_tagfl_base_addr_gp  = 20'h0_0000;
 
   localparam dram_base_addr_gp         = 40'h00_8000_0000;
   localparam coproc_base_addr_gp       = 40'h10_0000_0000;
   localparam global_base_addr_gp       = 40'h20_0000_0000;
-
+      
 endpackage
 

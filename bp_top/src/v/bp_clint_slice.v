@@ -57,6 +57,7 @@ logic mipi_cmd_v;
 logic mtimecmp_cmd_v;
 logic mtime_cmd_v;
 logic plic_cmd_v;
+logic test_cmd_v;
 logic wr_not_rd;
 
 bp_local_addr_s local_addr;
@@ -68,6 +69,7 @@ always_comb
     mtimecmp_cmd_v = 1'b0;
     mipi_cmd_v     = 1'b0;
     plic_cmd_v     = 1'b0;
+    test_cmd_v     = 1'b0;
 
     wr_not_rd = mem_cmd_lo.header.msg_type inside {e_cce_mem_wr, e_cce_mem_uc_wr};
 
@@ -77,11 +79,12 @@ always_comb
       mtimecmp_reg_base_addr_gp: mtimecmp_cmd_v = small_fifo_v_lo;
       mipi_reg_base_addr_gp    : mipi_cmd_v     = small_fifo_v_lo;
       plic_reg_base_addr_gp    : plic_cmd_v     = small_fifo_v_lo;
+      test_reg_base_addr_gp    : test_cmd_v     = small_fifo_v_lo;      
       default: begin end
     endcase
   end
 
-logic [dword_width_p-1:0] mtime_r, mtime_val_li, mtimecmp_n, mtimecmp_r;
+logic [dword_width_p-1:0] mtime_r, mtime_val_li, mtimecmp_n, mtimecmp_r, testreg_n, testreg_r;
 logic                     mipi_n, mipi_r;
 logic                     plic_n, plic_r;
 
@@ -155,13 +158,29 @@ bsg_dff_reset_en
    );
 assign external_irq_o = plic_r;
 
+assign testreg_n = mem_cmd_lo.data[0+:dword_width_p];
+wire testreg_w_v_li = wr_not_rd & test_cmd_v;
+bsg_dff_reset_en
+    #(.width_p(dword_width_p))
+    test_reg
+    (.clk_i(clk_i)
+        ,.reset_i(reset_i)
+        ,.en_i(testreg_w_v_li)
+
+        ,.data_i(testreg_n)
+        ,.data_o(testreg_r)
+    );
+assign external_irq_o = testreg_r;
+
 wire [dword_width_p-1:0] rdata_lo = plic_cmd_v 
                                     ? dword_width_p'(plic_r)
                                     : mipi_cmd_v 
                                       ? dword_width_p'(mipi_r)
                                       : mtimecmp_cmd_v 
                                         ? dword_width_p'(mtimecmp_r)
-                                        : mtime_r;
+                                        : test_cmd_v 
+                                            ? dword_width_p'(testreg_r)
+                                            : mtime_r;
 
 bp_cce_mem_msg_s mem_resp_lo;
 assign mem_resp_lo =

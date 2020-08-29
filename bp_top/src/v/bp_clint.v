@@ -79,7 +79,7 @@ wire [lg_num_core_lp-1:0] mipi_cmd_core_enc =
   mem_cmd_li.addr[mipi_core_offset_lp+:lg_num_core_lp];
 wire [lg_num_core_lp-1:0] mtimecmp_cmd_core_enc = 
   mem_cmd_li.addr[mtimecmp_core_offset_lp+:lg_num_core_lp];  
-
+        
 bsg_decode_with_v
  #(.num_out_p(num_core_p))
  mipi_cmd_decoder
